@@ -35,22 +35,25 @@ The system is authorized to autonomously execute operational care-coordination t
 The system architecture cleanly distinguishes between **6 specialized AI agents** and **two non-AI infrastructural components**:
 
 ```
-Discharge Understanding Agent (AI Agent)
-                ↓
-  Recovery Planning Agent (AI Agent)
-                ↓
-     Monitoring Agent (AI Agent)
-                ↓
-Deterministic Safety Engine (Configured Rule Engine — NOT an AI Agent)
-                ↓
-    Risk/Reasoning Agent (AI Agent)
-                ↓
-        Agent Orchestrator (Central Event Coordinator)
-                ↓
-         ┌──────┴─────────┐
-         ↓                ↓
-   Follow-Up Agent   Escalation Agent
-     (AI Agent)         (AI Agent)
+                    Agent Orchestrator
+                           |
+          +----------------+----------------+
+          |                |                |
+          v                v                v
+ Discharge Understanding  Recovery       Monitoring
+        Agent             Planning Agent     Agent
+                                             |
+                                             v
+                                  Deterministic Safety
+                                       Engine
+                                             |
+                                             v
+                                   Risk/Reasoning Agent
+                                             |
+                                  +----------+----------+
+                                  |                     |
+                                  v                     v
+                             Follow-Up Agent      Escalation Agent
 ```
 
 ### Component Categories
@@ -69,8 +72,8 @@ Deterministic Safety Engine (Configured Rule Engine — NOT an AI Agent)
    - **Deterministic Precedence Guarantee:** Safety engine violations **strictly override** LLM reasoning. If a threshold is crossed (e.g., temperature $101.8^\circ\text{F} \ge 101.5^\circ\text{F}$), the risk level is deterministically locked to `HIGH` or `CRITICAL`. The LLM cannot downgrade or dismiss this finding.
 
 3. **Agent Orchestrator:**
-   - The central nervous system of the platform.
-   - Enforces execution sequence, manages state transitions, and routes structured events between components without mixing agent responsibilities.
+   - The central workflow coordinator of the platform.
+   - Enforces execution sequence, coordinates agent lifecycles, manages state transitions, and routes structured events between components without mixing agent responsibilities.
 
 ---
 
@@ -78,54 +81,47 @@ Deterministic Safety Engine (Configured Rule Engine — NOT an AI Agent)
 
 ```mermaid
 flowchart TD
-    subgraph DocumentInput ["1. Ingestion Phase"]
+    ORCHESTRATOR{"Agent Orchestrator\n(Central Workflow Coordinator)"}
+
+    subgraph Inputs ["Patient & Clinical Inputs"]
         RAW_DOC["Raw Hospital Discharge Summary\n(Text / EHR / PDF)"]
+        PATIENT_ACTION["Patient Action / Vitals / Symptoms"]
+    end
+
+    subgraph AgentsTier ["Specialized Clinical AI Agents"]
         AGENT_1["1. Discharge Understanding Agent\n(AI Agent — Schema Extractor)"]
-    end
-
-    subgraph PlanningPhase ["2. Recovery Planning Phase"]
         AGENT_2["2. Recovery Planning Agent\n(AI Agent — Roadmap & Task Synthesizer)"]
-    end
-
-    subgraph MonitoringPhase ["3. Continuous Observation Phase"]
-        PATIENT_ACTION["Patient Action / Vitals / Symptom"]
         AGENT_3["3. Monitoring Agent\n(AI Agent — Telemetry Sentinel)"]
-    end
-
-    subgraph SafetyTier ["4. Deterministic Pre-Emption Tier"]
-        SAFETY_ENGINE["Deterministic Safety Engine\n(Explicit Hardcoded Clinical Rule Engine)\n⚠️ NOT AN AI AGENT — Deterministic Precedence"]
-    end
-
-    subgraph CognitiveTier ["5. Contextual Reasoning Tier"]
         AGENT_4["4. Risk / Reasoning Agent\n(AI Agent — Multi-Factor Clinical Evaluator)"]
-    end
-
-    subgraph OrchestrationTier ["6. Orchestration & Event Routing"]
-        ORCHESTRATOR{"Agent Orchestrator\n(State Machine & Router)"}
-    end
-
-    subgraph ActionTier ["7. Dual-Path Action Tier"]
         AGENT_5["5. Follow-Up Agent\n(AI Agent — Patient Recovery Companion)"]
-        AGENT_6["6. Escalation / Coordination Agent\n(AI Agent — SBAR Draft Generator)"]
+        AGENT_6["6. Escalation / Coordination Agent\n(AI Agent — Draft SBAR Generator)"]
     end
 
-    subgraph Humans ["8. Human In The Loop"]
+    subgraph SafetyTier ["Deterministic Safety Tier (Non-AI)"]
+        SAFETY_ENGINE["Deterministic Safety Engine\n(Explicit Hardcoded Clinical Rule Engine)\n⚠️ NOT AN AI AGENT — Precedence Guarantee"]
+    end
+
+    subgraph HumanReview ["Human-in-the-Loop Clinical Review"]
         PATIENT_UI["Patient Portal Screen\n(Grounded Reassurance / Clarification)"]
         CLINICAL_BOARD["Healthcare Team Triage Board\n(Review AI-Generated Draft SBAR & Ticket)"]
     end
 
+    ORCHESTRATOR -->|Coordinates Ingestion| AGENT_1
+    ORCHESTRATOR -->|Coordinates Plan Synthesis| AGENT_2
+    ORCHESTRATOR -->|Coordinates Telemetry Monitoring| AGENT_3
+
     RAW_DOC --> AGENT_1
-    AGENT_1 -->|Structured DischargeProfile| AGENT_2
-    AGENT_2 -->|30-Day Plan & CareTasks| AGENT_3
+    AGENT_1 -.->|Structured DischargeProfile| AGENT_2
+    AGENT_2 -.->|30-Day Plan & CareTasks| AGENT_3
     PATIENT_ACTION --> AGENT_3
+
     AGENT_3 -->|RecoveryEvent Payload| SAFETY_ENGINE
     SAFETY_ENGINE -->|SafetyEvaluationResult & Hard Flags| AGENT_4
-    AGENT_4 -->|RiskAssessment Payload| ORCHESTRATOR
 
-    ORCHESTRATOR -->|Route: LOW / MODERATE Risk| AGENT_5
-    ORCHESTRATOR -->|Route: HIGH / CRITICAL Risk| AGENT_6
+    AGENT_4 -->|Route: LOW / MODERATE Risk| AGENT_5
+    AGENT_4 -->|Route: HIGH / CRITICAL Risk| AGENT_6
 
-    AGENT_5 -->|Reassuring Advice & Clarification Prompts| PATIENT_UI
+    AGENT_5 -->|Reassuring Advice & Clarification| PATIENT_UI
     AGENT_6 -->|Structured Draft SBAR Ticket & Alert| CLINICAL_BOARD
 ```
 

@@ -56,24 +56,24 @@ The system cleanly separates **6 specialized AI agents** from non-AI determinist
 
 ```mermaid
 flowchart TD
+    ORCHESTRATOR{"Agent Orchestrator\n(Central Workflow Coordinator)"}
+
     subgraph Inputs ["Patient & Clinical Inputs"]
         RAW_DOC["Raw Discharge Summary"]
         PATIENT_INPUT["Patient Telemetry\n(Vitals, Adherence, Symptoms)"]
     end
 
-    subgraph AgentPipeline ["CareBridge Pipeline Flow"]
+    subgraph AgentsTier ["Specialized AI Agents"]
         AGENT_1["1. Discharge Understanding Agent\n(AI Agent)"]
         AGENT_2["2. Recovery Planning Agent\n(AI Agent)"]
         AGENT_3["3. Monitoring Agent\n(AI Agent)"]
-
-        SAFETY_ENGINE["Deterministic Safety Engine\n(Configured Rule Engine — NOT an AI Agent)"]
-
         AGENT_4["4. Risk / Reasoning Agent\n(AI Agent)"]
-
-        ORCHESTRATOR{"Agent Orchestrator\n(Event Router & Coordinator)"}
-
         AGENT_5["5. Follow-Up Agent\n(AI Agent)"]
         AGENT_6["6. Escalation / Coordination Agent\n(AI Agent)"]
+    end
+
+    subgraph SafetyTier ["Deterministic Safety Tier (Non-AI)"]
+        SAFETY_ENGINE["Deterministic Safety Engine\n(Configured Rule Engine — NOT an AI Agent)"]
     end
 
     subgraph HumanReview ["Human-in-the-Loop Clinical Review"]
@@ -81,16 +81,20 @@ flowchart TD
         CLINICAL_TEAM["Healthcare Team Triage Board\n(Reviews AI-Generated Draft SBAR & Ticket)"]
     end
 
+    ORCHESTRATOR -->|Coordinates Ingestion| AGENT_1
+    ORCHESTRATOR -->|Coordinates Plan Synthesis| AGENT_2
+    ORCHESTRATOR -->|Coordinates Monitoring| AGENT_3
+
     RAW_DOC --> AGENT_1
-    AGENT_1 -->|Structured DischargeProfile| AGENT_2
-    AGENT_2 -->|RecoveryPlan & CareTasks| AGENT_3
+    AGENT_1 -.->|Structured DischargeProfile| AGENT_2
+    AGENT_2 -.->|RecoveryPlan & CareTasks| AGENT_3
     PATIENT_INPUT --> AGENT_3
+
     AGENT_3 -->|RecoveryEvent & Telemetry| SAFETY_ENGINE
     SAFETY_ENGINE -->|Deterministic Violations & Hard Flags| AGENT_4
-    AGENT_4 -->|RiskAssessment: Context + Safety Status| ORCHESTRATOR
 
-    ORCHESTRATOR -->|Low / Moderate Risk| AGENT_5
-    ORCHESTRATOR -->|High / Critical Risk| AGENT_6
+    AGENT_4 -->|Low / Moderate Risk| AGENT_5
+    AGENT_4 -->|High / Critical Risk| AGENT_6
 
     AGENT_5 -->|Reassuring Advice & Clarification| PATIENT_UI
     AGENT_6 -->|Structured Draft SBAR Ticket| CLINICAL_TEAM

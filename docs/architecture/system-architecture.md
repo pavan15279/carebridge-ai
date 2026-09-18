@@ -13,7 +13,7 @@ The transition of care from the inpatient hospital setting to home recovery repr
 
 ## 2. Proposed Solution
 
-**CareBridge AI** is an autonomous, agentic care coordination platform designed to bridge the post-discharge care void. The platform operates on a closed-loop cybernetic feedback model:
+**CareBridge AI** is an agentic AI care coordination platform designed to bridge the post-discharge care void. The platform operates on a closed-loop cybernetic feedback model:
 
 $$\text{OBSERVE} \longrightarrow \text{REASON} \longrightarrow \text{PLAN} \longrightarrow \text{ACT} \longrightarrow \text{FOLLOW-UP} \longrightarrow \text{OBSERVE}$$
 
@@ -44,72 +44,29 @@ $$\text{OBSERVE} \longrightarrow \text{REASON} \longrightarrow \text{PLAN} \long
 CareBridge AI follows a modern, decoupled, event-driven architecture organized into five discrete layers:
 
 ```mermaid
-flowchart TB
-    subgraph PresentationLayer ["1. Presentation Layer"]
-        PATIENT_PORTAL["Patient Recovery Portal\n(Next.js 14 PWA / Tailwind / TypeScript)\n• Daily Recovery Checklist\n• AI Recovery Companion Chat\n• Symptom Reporting Wizard\n• Emergency 911 Directives"]
-        CLINICAL_DASHBOARD["Healthcare Team Dashboard\n(Next.js 14 Web App / Tailwind)\n• Real-Time Triage Board (Red/Amber/Green)\n• SBAR Escalation Ticket Viewer\n• Longitudinal Vitals & Adherence Charting\n• Agent Audit & Reasoning Log"]
-    end
+flowchart TD
+    ORCHESTRATOR["Agent Orchestrator\n(Central Workflow Coordinator — Non-AI Infrastructure Component)"]
 
-    subgraph APIGateway ["2. API Gateway & Backend Services (FastAPI / Python 3.11)"]
-        AUTH_SVC["Auth & RBAC Middleware\n(JWT / OAuth2 / HIPAA-Compliant Session)"]
-        DISCHARGE_API["/api/v1/discharge\n(Ingestion & Parsing)"]
-        PLAN_API["/api/v1/plans & /api/v1/tasks\n(Recovery Plans & Adherence)"]
-        SYMPTOM_API["/api/v1/symptoms & /api/v1/chat\n(Symptom Intake & Companion)"]
-        CLINICAL_API["/api/v1/clinical\n(Triage Queue & SBAR Tickets)"]
-        AUDIT_API["/api/v1/audit\n(Telemetry & Explainability)"]
-    end
+    AGENT_1["Discharge Understanding Agent\n(AI Agent)"]
+    AGENT_2["Recovery Planning Agent\n(AI Agent)"]
+    AGENT_3["Monitoring Agent\n(AI Agent)"]
 
-    subgraph AgentCore ["3. Agentic AI Core (Orchestrator Engine)"]
-        ORCHESTRATOR["Supervisor Orchestrator Engine\n(State Machine & In-Memory Event Bus)"]
+    SAFETY_ENGINE["Deterministic Safety Engine\n(Configured Rule Engine — NOT an AI Agent)"]
 
-        AGENT_1["1. Discharge Understanding Agent"]
-        AGENT_2["2. Recovery Planning Agent"]
-        AGENT_3["3. Monitoring Agent"]
-        AGENT_4["4. Risk / Reasoning Agent"]
-        AGENT_5["5. Follow-Up Agent"]
-        AGENT_6["6. Escalation / Coordination Agent"]
+    AGENT_4["Risk / Reasoning Agent\n(AI Agent)"]
 
-        SAFETY_ENGINE["Deterministic Safety Engine\n(Hardcoded Pre-LLM Clinical Rules)"]
-    end
+    AGENT_5["Follow-Up Agent\n(AI Agent)"]
+    AGENT_6["Escalation / Coordination Agent\n(AI Agent)"]
 
-    subgraph InferenceLayer ["4. LLM & Inference Layer"]
-        GEMINI_LLM["Google Gemini 2.5 Flash / 1.5 Pro\n(@google/genai SDK / Structured Outputs)"]
-    end
+    ORCHESTRATOR -->|Coordinates Ingestion| AGENT_1
+    ORCHESTRATOR -->|Coordinates Plan Synthesis| AGENT_2
+    ORCHESTRATOR -->|Coordinates Monitoring| AGENT_3
 
-    subgraph PersistenceLayer ["5. Persistence & Telemetry Layer"]
-        RELATIONAL_DB[(Relational Clinical Store\nPostgreSQL / SQLite\nPatients, Plans, Tasks, Symptoms, Tickets)]
-        AUDIT_STORE[(Immutable Event & Reasoning Log\nAgent Telemetry & Decision Traces)]
-        SYNTHETIC_DATA[(Validated Synthetic Clinical Corpus\nZero Real PHI)]
-    end
+    AGENT_3 -->|Telemetry & Recovery Events| SAFETY_ENGINE
+    SAFETY_ENGINE -->|Deterministic Rules & Hard Flags| AGENT_4
 
-    PATIENT_PORTAL <--> AUTH_SVC
-    CLINICAL_DASHBOARD <--> AUTH_SVC
-
-    AUTH_SVC --> DISCHARGE_API
-    AUTH_SVC --> PLAN_API
-    AUTH_SVC --> SYMPTOM_API
-    AUTH_SVC --> CLINICAL_API
-    AUTH_SVC --> AUDIT_API
-
-    DISCHARGE_API <--> ORCHESTRATOR
-    PLAN_API <--> ORCHESTRATOR
-    SYMPTOM_API <--> ORCHESTRATOR
-    CLINICAL_API <--> ORCHESTRATOR
-    AUDIT_API <--> ORCHESTRATOR
-
-    ORCHESTRATOR <--> AGENT_1
-    ORCHESTRATOR <--> AGENT_2
-    ORCHESTRATOR <--> AGENT_3
-    ORCHESTRATOR <--> AGENT_4
-    ORCHESTRATOR <--> AGENT_5
-    ORCHESTRATOR <--> AGENT_6
-
-    AGENT_4 <--> SAFETY_ENGINE
-    AGENT_1 & AGENT_2 & AGENT_4 & AGENT_5 & AGENT_6 <--> GEMINI_LLM
-
-    ORCHESTRATOR <--> RELATIONAL_DB
-    ORCHESTRATOR <--> AUDIT_STORE
-    DISCHARGE_API <--> SYNTHETIC_DATA
+    AGENT_4 -->|Low / Moderate Risk| AGENT_5
+    AGENT_4 -->|High / Critical Risk| AGENT_6
 ```
 
 ---

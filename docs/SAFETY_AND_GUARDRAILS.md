@@ -42,7 +42,10 @@ Deterministic safety rules **strictly take precedence over LLM reasoning**.
 
 ```mermaid
 flowchart TD
+    ORCH{"Agent Orchestrator\n(Central Workflow Coordinator)"}
+
     INPUT["Patient Input / Telemetry\n(Vitals, Adherence, Symptoms)"] --> MON["Monitoring Agent"]
+    ORCH -->|Coordinates Monitoring| MON
     MON --> SAFETY["Deterministic Safety Engine\n(Explicit Rule Evaluator — NOT an AI Agent)"]
 
     SAFETY --> CHECK{"Rule Violation\nDetected?"}
@@ -53,8 +56,7 @@ flowchart TD
     LOCK --> REASON["Risk / Reasoning Agent\n(Synthesizes Contextual Reasoning Trace)"]
     NORMAL --> REASON
 
-    REASON --> ORCH["Agent Orchestrator"]
-    ORCH --> ROUTE{"Risk Level?"}
+    REASON --> ROUTE{"Evaluated Risk Level"}
 
     ROUTE -- "HIGH / CRITICAL" --> ESC["Escalation Agent\n(Draft SBAR + Triage Board Alert)"]
     ROUTE -- "LOW / MODERATE" --> FOL["Follow-Up Agent\n(Companion Chat + Clarification)"]
