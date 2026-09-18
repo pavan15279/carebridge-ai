@@ -1,58 +1,97 @@
-# CareBridge AI: Safety & Guardrails Specification
+# CareBridge AI: Clinical Safety, Guardrails & Legal Boundaries
 
-## 1. Ethical & Legal Boundaries
-
-CareBridge AI is designed with strict healthcare safety guardrails:
-1. **NOT A LICENSED HEALTHCARE PROVIDER:** CareBridge AI does not have a medical license, cannot practice medicine, cannot diagnose diseases, cannot order diagnostic tests, and cannot prescribe or modify medication dosages.
-2. **CLINICAL TRIAGE & COORDINATION ONLY:** The sole operational mandate of the platform is to support the patient in understanding their physician's existing orders, tracking recovery tasks, and escalating deviations to human clinicians.
-3. **MANDATORY DISCLAIMER:** Every patient interaction must display or include:
-   > *"CareBridge AI is an AI recovery coordinator, not a doctor. It does not provide medical diagnoses or alter prescribed treatments. For emergencies, please call 911 immediately."*
+> **Operational Prototype Disclaimer:**
+> CareBridge AI is an **Agentic AI healthcare decision-support and care-coordination prototype**. It is **NOT** an autonomous medical decision-maker and does **NOT** replace licensed physicians, nurses, or emergency clinical personnel.
 
 ---
 
-## 2. Deterministic Safety Rule Engine (Zero-Hallucination Tier)
+## 1. System Authority & Safety Boundaries
 
-Before any LLM reasoning takes place, all patient-reported data (vitals, symptoms, task misses) is evaluated through a deterministic, hardcoded rules engine.
+### 1.1 Non-Negotiable Clinical Prohibitions
+To ensure complete clinical safety and regulatory alignment, the AI components are explicitly prohibited from:
+- ❌ **Diagnosing diseases or medical conditions:** The AI must never state *"You have an infection"*, *"You have heart failure"*, or assign diagnostic codes.
+- ❌ **Prescribing pharmaceuticals or remedies:** The AI must never recommend or order medications.
+- ❌ **Modifying medication dosages or schedules:** The AI must never advise increasing, decreasing, or discontinuing medication.
+- ❌ **Altering clinical care or post-operative treatment regimens:** Care plans must strictly mirror the documented discharge instructions.
+- ❌ **Making final clinical or triage decisions:** The system provides decision-support only; final triage determinations belong exclusively to human clinicians.
+- ❌ **Replacing licensed healthcare professionals or emergency services.**
 
-### Critical Safety Rules Table
+### 1.2 Authorized Autonomous Workflow Actions
+The platform is authorized to autonomously execute care-coordination operations:
+- ✅ **Creating recovery tasks** and personalizing daily milestone roadmaps based on hospital discharge orders.
+- ✅ **Tracking patient adherence** to prescribed medications, physical therapy, and vitals checks.
+- ✅ **Recording recovery events** and longitudinal telemetry in the clinical store.
+- ✅ **Evaluating deterministic safety rules** against configured physiological thresholds.
+- ✅ **Creating follow-up tasks** and scheduling automated re-check timers for mild concerns.
+- ✅ **Generating real-time alerts** on the Healthcare Team Dashboard.
+- ✅ **Generating draft SBAR clinical notes** clearly watermarked as AI-generated drafts requiring clinical review.
+- ✅ **Updating recovery timelines** as milestones are achieved.
+- ✅ **Preparing longitudinal recovery summaries** for outpatient clinical follow-up consultations.
 
-| Rule ID | Parameter | Condition / Trigger Threshold | Action | Risk Level |
+---
+
+## 2. Deterministic Safety Engine (NOT an AI Agent)
+
+The **Deterministic Safety Engine** is an algorithmic, zero-hallucination evaluation component—**it is NOT an AI agent**.
+
+### 2.1 The Precedence Principle
+Deterministic safety rules **strictly take precedence over LLM reasoning**.
+- If a patient-reported parameter breaches an explicit, configured clinical threshold (e.g., patient temperature $= 101.8^\circ\text{F}$ against a configured discharge warning threshold of $101.5^\circ\text{F}$), the safety engine deterministically detects the rule violation.
+- The generative LLM **must not override, soften, or downgrade** that result.
+- The event is deterministically locked to at least **`HIGH`** or **`CRITICAL`** risk, routing to the **Escalation / Coordination Agent** to notify the healthcare team.
+
+```mermaid
+flowchart TD
+    ORCH{"Agent Orchestrator\n(Central Workflow Coordinator)"}
+
+    INPUT["Patient Input / Telemetry\n(Vitals, Adherence, Symptoms)"] --> MON["Monitoring Agent"]
+    ORCH -->|Coordinates Monitoring| MON
+    MON --> SAFETY["Deterministic Safety Engine\n(Explicit Rule Evaluator — NOT an AI Agent)"]
+
+    SAFETY --> CHECK{"Rule Violation\nDetected?"}
+
+    CHECK -- YES --> LOCK["LOCKED: Risk Floor = HIGH or CRITICAL\n(Deterministic Override Active)"]
+    CHECK -- NO --> NORMAL["Safety Status: Normal / Baseline"]
+
+    LOCK --> REASON["Risk / Reasoning Agent\n(Synthesizes Contextual Reasoning Trace)"]
+    NORMAL --> REASON
+
+    REASON --> ROUTE{"Evaluated Risk Level"}
+
+    ROUTE -- "HIGH / CRITICAL" --> ESC["Escalation Agent\n(Draft SBAR + Triage Board Alert)"]
+    ROUTE -- "LOW / MODERATE" --> FOL["Follow-Up Agent\n(Companion Chat + Clarification)"]
+```
+
+---
+
+## 3. Pre-Configured Deterministic Safety Rules
+
+| Rule Identifier | Parameter Monitored | Configured Threshold | Action Triggered | Risk Floor |
 | :--- | :--- | :--- | :--- | :--- |
-| `RULE-VITAL-BP-SYS` | Systolic Blood Pressure | `>= 180 mmHg` OR `<= 85 mmHg` | Immediate Clinical Escalation + 911 Warning | **CRITICAL** |
-| `RULE-VITAL-BP-DIA` | Diastolic Blood Pressure | `>= 110 mmHg` OR `<= 50 mmHg` | Immediate Clinical Escalation | **HIGH** |
-| `RULE-VITAL-HR` | Heart Rate | `>= 130 bpm` OR `<= 45 bpm` | Clinical Alert | **HIGH** |
-| `RULE-VITAL-SPO2` | Oxygen Saturation (SpO2) | `<= 90%` (or `<= 88%` with COPD) | Immediate Escalation + Emergency Directive | **CRITICAL** |
-| `RULE-VITAL-TEMP` | Body Temperature | `>= 101.5°F (38.6°C)` | Suspected Infection / Surgical Site Alert | **HIGH** |
-| `RULE-CHF-WEIGHT` | Weight Gain (CHF Patient) | `>= 3 lbs in 24 hrs` OR `>= 5 lbs in 1 week` | Decompensation Alert + Nurse Call | **HIGH** |
-| `RULE-SYMP-CHEST` | Chest Pain / Pressure | Keyword detection: "chest pain", "tightness", "pressure radiating" | Immediate Emergency Protocol (Call 911) | **CRITICAL** |
-| `RULE-SYMP-DVT` | Unilateral Leg Swelling / Pain | Keyword: "calf swollen", "pain in back of leg", "hot calf" (Post-op) | Urgent Outpatient Escalation (Rule out DVT) | **HIGH** |
-| `RULE-MED-ANTICOAG` | Missed Anticoagulant | Missed 2 consecutive doses of blood thinner | Clinical Escalation (Stroke/Clot Risk) | **HIGH** |
-
-### Dual-Layer Evaluation Architecture
-```
-[Patient Input: Symptom / Vital]
-         │
-         ├──► [Deterministic Safety Engine] ──(Violation Triggered?)──► FORCE Escalation Ticket
-         │                                                                   │
-         └──► [Risk / Reasoning Agent (LLM)] ──(Contextual Nuance)───────────┘
-```
-- If the **Deterministic Safety Engine** detects a violation, the final risk score is clamped to **`HIGH` or `CRITICAL`**, even if the LLM produces a milder assessment.
-- If no deterministic rule triggers, the LLM provides contextual reasoning for subtler patterns.
+| `RULE-VITAL-TEMP` | Core Body Temperature | $\ge 101.5^\circ\text{F}\ (38.6^\circ\text{C})$ | Immediate Infection Escalation | **HIGH** |
+| `RULE-VITAL-BP-SYS` | Systolic Blood Pressure | $\ge 180\text{ mmHg}$ or $\le 85\text{ mmHg}$ | Hypertensive Emergency / Shock Directive | **CRITICAL** |
+| `RULE-VITAL-BP-DIA` | Diastolic Blood Pressure | $\ge 110\text{ mmHg}$ or $\le 50\text{ mmHg}$ | Severe BP Deviation Alert | **HIGH** |
+| `RULE-VITAL-SPO2` | Oxygen Saturation ($SpO_2$) | $\le 90\%$ (or $\le 88\%$ for COPD) | Hypoxia Alert & Emergency Protocol | **CRITICAL** |
+| `RULE-VITAL-HR` | Heart Rate | $\ge 130\text{ bpm}$ or $\le 45\text{ bpm}$ | Tachycardia / Bradycardia Alert | **HIGH** |
+| `RULE-CHF-WEIGHT` | Dry Weight (CHF Patient) | $\ge 3\text{ lbs in 24h}$ or $\ge 5\text{ lbs in 7d}$ | Fluid Overload / Decompensation Alert | **HIGH** |
+| `RULE-SYMP-CHEST` | Symptom Description | Keywords: "chest pain", "pressure", "radiating" | Immediate 911 Emergency Directive | **CRITICAL** |
+| `RULE-SYMP-DVT` | Post-op Limb Symptoms | Keywords: "calf swelling", "hot calf", "leg pain" | Urgent Outpatient DVT Evaluation Alert | **HIGH** |
+| `RULE-MED-ANTICOAG`| Anticoagulant Compliance | 2 consecutive missed anticoagulant doses | Thromboembolic Risk Escalation | **HIGH** |
 
 ---
 
-## 3. Strict LLM Output Guardrails
+## 4. Draft SBAR Note Clinical Review Standards
 
-To prevent hallucinated medical advice, prompt templates enforce the following restrictions:
+To prevent unverified AI outputs from directly dictating patient care, all SBAR notes generated by the **Escalation / Coordination Agent** must adhere to the following standards:
 
-1. **Restricted Vocabulary & Phrasing:**
-   - 🚫 Prohibited: *"You have...", "I diagnose you with...", "You should increase your dose to...", "Stop taking this medication."*
-   - ✅ Allowed: *"Your discharge instructions advise...", "This symptom is something your doctor needs to review...", "Please contact your clinic at [PHONE]..."*
-
-2. **Grounding Constraint:**
-   - Every reassurance or procedural guideline given to a patient must reference a specific section of their ingested `DischargeProfile`.
-   - If an inquiry falls outside the scope of the discharge document, the agent replies:
-     *"That question is outside the scope of your discharge paperwork. Please check with your physician or pharmacist."*
-
-3. **Hallucination Protection on Contact Information:**
-   - Contact numbers, clinic hours, and emergency instructions must only be populated from validated configuration fields or parsed document records. The LLM is forbidden from creating placeholder phone numbers.
+1. **Mandatory Header Watermark:**
+   ```text
+   ================================================================================
+   ⚠️ AI-GENERATED DRAFT — REQUIRES HEALTHCARE PROFESSIONAL CLINICAL REVIEW
+   This communication was generated by CareBridge AI as clinical decision support.
+   It does not constitute a verified clinical order or diagnosis.
+   Validate all data points with the patient before taking clinical action.
+   ================================================================================
+   ```
+2. **Clinician-in-the-Loop Sign-off:** An escalation ticket cannot be resolved or translated into an order without explicit review, notes, and authorization by a licensed nurse or physician.
+3. **Auditability:** The original telemetry, deterministic rule result, raw LLM prompt, and generated draft SBAR note are immutably archived with cryptographic timestamps.
