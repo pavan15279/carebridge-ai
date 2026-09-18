@@ -1,0 +1,102 @@
+{
+  "patient": {
+    "id": "PT-PNA-004",
+    "first_name": "Sarah",
+    "last_name": "Chen",
+    "age": 54,
+    "gender": "Female",
+    "discharge_date": "2026-09-17",
+    "condition_category": "Pulmonary / Infectious Disease",
+    "primary_care_physician": "Dr. Robert Liu, MD (Pulmonology)",
+    "clinic_phone": "555-0450",
+    "emergency_contact": "Kevin Chen (Brother) - 555-0452"
+  },
+  "discharge_profile": {
+    "profile_id": "DP-PNA-004",
+    "patient_id": "PT-PNA-004",
+    "primary_diagnosis": "Severe Right Lower Lobe Community-Acquired Pneumonia, resolved sepsis",
+    "procedures": ["Inpatient IV Ceftriaxone and Azithromycin therapy, transitioned to oral antibiotics"],
+    "discharge_date": "2026-09-17",
+    "dietary_instructions": "Well-balanced diet, generous oral hydration (at least 2 Liters of water daily to thin pulmonary secretions).",
+    "activity_restrictions": "Gradual return to activities. Daily rest periods. Avoid tobacco smoke and environmental irritants.",
+    "wound_care_instructions": "No surgical wounds. Monitor IV catheter puncture sites for phlebitis.",
+    "medications": [
+      {
+        "drug_name": "Levofloxacin (Levaquin)",
+        "dosage": "750 mg",
+        "route": "Oral",
+        "frequency": "Once daily for 5 more days (Finish full course!)",
+        "schedule_slots": ["09:00"],
+        "indication": "Targeted oral antibiotic to eradicate residual pulmonary infection",
+        "is_discontinued": false,
+        "warning": "CRITICAL: Complete the full course even if feeling better. Report tendon pain."
+      },
+      {
+        "drug_name": "Albuterol HFA Inhaler",
+        "dosage": "90 mcg/actuation",
+        "route": "Inhaled",
+        "frequency": "1-2 puffs every 4-6 hours as needed for wheezing or tightness",
+        "schedule_slots": [],
+        "indication": "Bronchodilator for reactive airway symptoms",
+        "is_discontinued": false
+      },
+      {
+        "drug_name": "Guaifenesin (Mucinex)",
+        "dosage": "600 mg",
+        "route": "Oral",
+        "frequency": "Every 12 hours with full glass of water",
+        "schedule_slots": ["08:00", "20:00"],
+        "indication": "Expectorant to loosen bronchial mucus",
+        "is_discontinued": false
+      }
+    ],
+    "red_flag_warnings": [
+      "Oxygen saturation (SpO2) dropping to 90% or lower on pulse oximeter",
+      "Return of high fever (101.5°F / 38.6°C or higher) or severe rigors/shaking chills",
+      "Coughing up significant amounts of bright red blood (hemoptysis)",
+      "Sharp pleuritic chest pain that worsens when breathing deeply",
+      "Confusion, disorientation, or extreme lethargy"
+    ],
+    "follow_up_appointments": [
+      {
+        "provider": "Dr. Robert Liu",
+        "specialty": "Pulmonology Outpatient Clinic",
+        "clinic_name": "Metro Chest & Allergy Specialists",
+        "date_time": "2026-09-29T14:30:00",
+        "contact_number": "555-0450"
+      }
+    ]
+  },
+  "initial_care_tasks_day_2": [
+    {
+      "task_id": "PNA-T-01",
+      "patient_id": "PT-PNA-004",
+      "day_number": 2,
+      "category": "MEDICATION",
+      "title": "Morning Antibiotic (Levofloxacin 750mg)",
+      "description": "Take 1 tablet with a full glass of water. Must be completed daily without skipping.",
+      "scheduled_time": "09:00",
+      "status": "COMPLETED"
+    },
+    {
+      "task_id": "PNA-T-02",
+      "patient_id": "PT-PNA-004",
+      "day_number": 2,
+      "category": "VITAL_CHECK",
+      "title": "Resting Pulse Oximeter & Temp Check",
+      "description": "Measure SpO2 and body temperature. Oxygen should remain above 92%.",
+      "scheduled_time": "10:00",
+      "status": "COMPLETED"
+    },
+    {
+      "task_id": "PNA-T-03",
+      "patient_id": "PT-PNA-004",
+      "day_number": 2,
+      "category": "CHECK_IN",
+      "title": "Midday Respiratory Symptom Check-in",
+      "description": "Check in regarding cough, sputum color, and ease of breathing.",
+      "scheduled_time": "13:00",
+      "status": "PENDING"
+    }
+  ]
+}

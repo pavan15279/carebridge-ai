@@ -1,0 +1,130 @@
+{
+  "patient": {
+    "id": "PT-TKA-002",
+    "first_name": "Elena",
+    "last_name": "Rostova",
+    "age": 66,
+    "gender": "Female",
+    "discharge_date": "2026-09-17",
+    "condition_category": "Orthopedic Surgery",
+    "primary_care_physician": "Dr. David Thorne, MD (Orthopedic Surgery)",
+    "clinic_phone": "555-0244",
+    "emergency_contact": "Alex Rostova (Son) - 555-0245"
+  },
+  "discharge_profile": {
+    "profile_id": "DP-TKA-002",
+    "patient_id": "PT-TKA-002",
+    "primary_diagnosis": "Severe Right Knee Osteoarthritis, post-operative arthroplasty",
+    "procedures": [
+      "Right Total Knee Arthroplasty (TKA)"
+    ],
+    "discharge_date": "2026-09-17",
+    "dietary_instructions": "Regular balanced diet, high protein for tissue healing, adequate fiber and hydration to prevent opioid constipation.",
+    "activity_restrictions": "Weight bearing as tolerated with rolling walker. Do not pivot or twist on operative knee. Avoid pillows directly under knee (keep leg straight to prevent flexion contracture).",
+    "wound_care_instructions": "Keep waterproof dressing intact until clinic visit. Ice operative knee 20 minutes every 2 hours as needed for swelling.",
+    "medications": [
+      {
+        "drug_name": "Enoxaparin (Lovenox)",
+        "dosage": "40 mg / 0.4 mL",
+        "route": "Subcutaneous Injection",
+        "frequency": "Once daily for 14 days",
+        "schedule_slots": ["09:00"],
+        "indication": "DVT / PE prophylaxis post joint arthroplasty",
+        "is_discontinued": false,
+        "warning": "Critical blood thinner. Do not miss doses. Rotate abdomen injection sites."
+      },
+      {
+        "drug_name": "Celecoxib (Celebrex)",
+        "dosage": "200 mg",
+        "route": "Oral",
+        "frequency": "Once daily in the morning with food",
+        "schedule_slots": ["08:00"],
+        "indication": "Anti-inflammatory pain control",
+        "is_discontinued": false
+      },
+      {
+        "drug_name": "Acetaminophen (Tylenol)",
+        "dosage": "500 mg",
+        "route": "Oral",
+        "frequency": "Every 6 hours as needed (Max 3,000 mg/24h)",
+        "schedule_slots": ["06:00", "12:00", "18:00", "22:00"],
+        "indication": "Baseline post-op analgesia",
+        "is_discontinued": false
+      },
+      {
+        "drug_name": "Oxycodone",
+        "dosage": "5 mg",
+        "route": "Oral",
+        "frequency": "Every 4-6 hours PRN severe breakthrough pain only",
+        "schedule_slots": [],
+        "indication": "Breakthrough post-surgical pain",
+        "is_discontinued": false,
+        "warning": "May cause drowsiness and constipation. Taper as pain improves."
+      }
+    ],
+    "red_flag_warnings": [
+      "Calf pain, cramping, localized swelling, redness, or heat in either calf (warning sign of Deep Vein Thrombosis)",
+      "Sudden shortness of breath, rapid breathing, or sharp chest pain on inhalation (Pulmonary Embolism)",
+      "Fever over 101.5°F, shaking chills, or foul-smelling drainage from knee dressing",
+      "Sudden inability to bear weight or severe uncontrolled pain not responding to prescribed medication"
+    ],
+    "follow_up_appointments": [
+      {
+        "provider": "Dr. David Thorne",
+        "specialty": "Orthopedic Surgery",
+        "clinic_name": "Valley Joint Replacement Institute",
+        "date_time": "2026-10-01T09:00:00",
+        "contact_number": "555-0244"
+      },
+      {
+        "provider": "Summit Physical Therapy",
+        "specialty": "Physical Therapy",
+        "clinic_name": "Valley PT Clinic",
+        "date_time": "2026-09-22T13:30:00",
+        "contact_number": "555-0280"
+      }
+    ]
+  },
+  "initial_care_tasks_day_2": [
+    {
+      "task_id": "TKA-T-01",
+      "patient_id": "PT-TKA-002",
+      "day_number": 2,
+      "category": "MEDICATION",
+      "title": "Morning Anti-inflammatory & Pain Regimen",
+      "description": "Take Celebrex 200mg with breakfast.",
+      "scheduled_time": "08:00",
+      "status": "COMPLETED"
+    },
+    {
+      "task_id": "TKA-T-02",
+      "patient_id": "PT-TKA-002",
+      "day_number": 2,
+      "category": "MEDICATION",
+      "title": "Daily DVT Anticoagulant Injection (Lovenox)",
+      "description": "Inject 40mg Lovenox subcutaneously into abdomen skin fold. Alternate sides.",
+      "scheduled_time": "09:00",
+      "status": "COMPLETED"
+    },
+    {
+      "task_id": "TKA-T-03",
+      "patient_id": "PT-TKA-002",
+      "day_number": 2,
+      "category": "PHYSICAL_THERAPY",
+      "title": "Home PT: Ankle Pumps & Quad Sets",
+      "description": "Perform 20 ankle pumps and 10 quad heel slides to maintain circulation.",
+      "scheduled_time": "11:00",
+      "status": "PENDING"
+    },
+    {
+      "task_id": "TKA-T-04",
+      "patient_id": "PT-TKA-002",
+      "day_number": 2,
+      "category": "WOUND_CARE",
+      "title": "Knee Dressing Check & Cryotherapy (Ice)",
+      "description": "Apply cold pack over knee dressing for 20 mins. Confirm dressing is dry.",
+      "scheduled_time": "14:00",
+      "status": "PENDING"
+    }
+  ]
+}

@@ -1,0 +1,122 @@
+{
+  "patient": {
+    "id": "PT-CHF-003",
+    "first_name": "Marcus",
+    "last_name": "Vance",
+    "age": 68,
+    "gender": "Male",
+    "discharge_date": "2026-09-17",
+    "condition_category": "Cardiovascular / Heart Failure",
+    "primary_care_physician": "Dr. Angela Martinez, MD (Heart Failure Specialist)",
+    "clinic_phone": "555-0312",
+    "emergency_contact": "Clarissa Vance (Daughter) - 555-0315"
+  },
+  "discharge_profile": {
+    "profile_id": "DP-CHF-003",
+    "patient_id": "PT-CHF-003",
+    "primary_diagnosis": "Acute on Chronic Systolic Heart Failure Exacerbation (HFrEF, EF 30%)",
+    "procedures": ["Inpatient IV Diuresis and Guideline-Directed Medical Therapy (GDMT) optimization"],
+    "discharge_date": "2026-09-17",
+    "dietary_instructions": "Strict low sodium (<2,000 mg daily). Strict fluid restriction of 1.5 Liters (48 oz) per day.",
+    "activity_restrictions": "Pace daily activities. Rest when fatigued. No vigorous exertion.",
+    "wound_care_instructions": "No surgical wounds. Inspect lower legs and ankles daily for pitting edema.",
+    "medications": [
+      {
+        "drug_name": "Furosemide (Lasix)",
+        "dosage": "40 mg",
+        "route": "Oral",
+        "frequency": "Twice daily (Morning and 2 PM to avoid nighttime urination)",
+        "schedule_slots": ["08:00", "14:00"],
+        "indication": "Loop diuretic for fluid control and edema prevention",
+        "is_discontinued": false,
+        "warning": "Do not skip. Weigh self daily."
+      },
+      {
+        "drug_name": "Sacubitril / Valsartan (Entresto)",
+        "dosage": "24/26 mg",
+        "route": "Oral",
+        "frequency": "Twice daily",
+        "schedule_slots": ["08:00", "20:00"],
+        "indication": "ARNI for heart failure neurohormonal blockade",
+        "is_discontinued": false
+      },
+      {
+        "drug_name": "Carvedilol (Coreg)",
+        "dosage": "12.5 mg",
+        "route": "Oral",
+        "frequency": "Twice daily with meals",
+        "schedule_slots": ["08:00", "18:00"],
+        "indication": "Beta blocker for cardiac remodeling",
+        "is_discontinued": false
+      },
+      {
+        "drug_name": "Potassium Chloride (Klor-Con)",
+        "dosage": "20 mEq",
+        "route": "Oral",
+        "frequency": "Once daily with morning Lasix",
+        "schedule_slots": ["08:00"],
+        "indication": "Electrolyte repletion due to diuretic loss",
+        "is_discontinued": false
+      }
+    ],
+    "red_flag_warnings": [
+      "Weight gain of 3 lbs or more in a single day, or 5 lbs in one week",
+      "Shortness of breath when lying flat requiring extra pillows (orthopnea)",
+      "Waking up suddenly at night gasping for air (paroxysmal nocturnal dyspnea)",
+      "New or worsening swelling in ankles, legs, or abdomen",
+      "Dizziness, lightheadedness, or feeling faint when standing up",
+      "Resting heart rate consistently above 110 or below 50 bpm"
+    ],
+    "follow_up_appointments": [
+      {
+        "provider": "Dr. Angela Martinez",
+        "specialty": "Heart Failure Clinic",
+        "clinic_name": "University Heart Center",
+        "date_time": "2026-09-24T11:00:00",
+        "contact_number": "555-0312"
+      }
+    ]
+  },
+  "initial_care_tasks_day_2": [
+    {
+      "task_id": "CHF-T-01",
+      "patient_id": "PT-CHF-003",
+      "day_number": 2,
+      "category": "VITAL_CHECK",
+      "title": "Morning Dry Weight & Blood Pressure Log",
+      "description": "Weigh yourself first thing after urination, before breakfast. Record weight accurately.",
+      "scheduled_time": "07:30",
+      "status": "COMPLETED"
+    },
+    {
+      "task_id": "CHF-T-02",
+      "patient_id": "PT-CHF-003",
+      "day_number": 2,
+      "category": "MEDICATION",
+      "title": "Morning Diuretic & Heart Failure Meds",
+      "description": "Take Furosemide 40mg, Entresto, Carvedilol, and Potassium Chloride with breakfast.",
+      "scheduled_time": "08:00",
+      "status": "COMPLETED"
+    },
+    {
+      "task_id": "CHF-T-03",
+      "patient_id": "PT-CHF-003",
+      "day_number": 2,
+      "category": "HYDRATION_DIET",
+      "title": "Fluid Intake Checkpoint (Limit 1.5L / 48 oz)",
+      "description": "Log total fluid consumed so far today. Remember soup and ice count toward your limit.",
+      "scheduled_time": "12:00",
+      "status": "PENDING"
+    },
+    {
+      "task_id": "CHF-T-04",
+      "patient_id": "PT-CHF-003",
+      "day_number": 2,
+      "category": "MEDICATION",
+      "title": "Afternoon Diuretic Dose (Furosemide 40mg)",
+      "description": "Take second dose of Lasix. Taking before 2 PM prevents disrupted sleep.",
+      "scheduled_time": "14:00",
+      "status": "PENDING"
+    }
+  ]
+}

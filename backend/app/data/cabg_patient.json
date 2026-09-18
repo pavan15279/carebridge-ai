@@ -1,0 +1,152 @@
+{
+  "patient": {
+    "id": "PT-CABG-001",
+    "first_name": "James",
+    "last_name": "Harrison",
+    "age": 71,
+    "gender": "Male",
+    "discharge_date": "2026-09-16",
+    "condition_category": "Cardiac Surgery",
+    "primary_care_physician": "Dr. Sarah Jenkins, MD (Cardiothoracic)",
+    "clinic_phone": "555-0199",
+    "emergency_contact": "Martha Harrison (Spouse) - 555-0198"
+  },
+  "discharge_profile": {
+    "profile_id": "DP-CABG-001",
+    "patient_id": "PT-CABG-001",
+    "primary_diagnosis": "Triple-vessel Coronary Artery Disease (CAD), post-sternotomy",
+    "procedures": [
+      "Coronary Artery Bypass Graft x3 (LIMA to LAD, SVG to OM1, SVG to RCA)"
+    ],
+    "discharge_date": "2026-09-16",
+    "dietary_instructions": "Heart-healthy, low sodium (<2,000 mg/day). Fluid intake between 1.5L and 2.0L daily.",
+    "activity_restrictions": "Sternal precautions for 6 weeks: Do not lift, push, or pull anything heavier than 10 lbs. Hug heart pillow when coughing.",
+    "wound_care_instructions": "Keep chest sternal and saphenous vein harvest incisions clean and dry. Wash gently with mild soap. Do not soak in tub or pool.",
+    "medications": [
+      {
+        "drug_name": "Metoprolol Succinate",
+        "dosage": "50 mg",
+        "route": "Oral",
+        "frequency": "Once daily in the morning",
+        "schedule_slots": ["08:00"],
+        "indication": "Blood pressure and heart rate control post-CABG",
+        "is_discontinued": false,
+        "warning": "Do not stop abruptly without physician instruction."
+      },
+      {
+        "drug_name": "Aspirin (Enteric Coated)",
+        "dosage": "81 mg",
+        "route": "Oral",
+        "frequency": "Once daily with breakfast",
+        "schedule_slots": ["08:00"],
+        "indication": "Antiplatelet therapy to maintain bypass graft patency",
+        "is_discontinued": false
+      },
+      {
+        "drug_name": "Clopidogrel (Plavix)",
+        "dosage": "75 mg",
+        "route": "Oral",
+        "frequency": "Once daily",
+        "schedule_slots": ["20:00"],
+        "indication": "Secondary antiplatelet prevention",
+        "is_discontinued": false,
+        "warning": "Critical antiplatelet. Report black stools or unusual bleeding."
+      },
+      {
+        "drug_name": "Atorvastatin",
+        "dosage": "40 mg",
+        "route": "Oral",
+        "frequency": "Once daily at bedtime",
+        "schedule_slots": ["21:00"],
+        "indication": "Plaque stabilization and lipid control",
+        "is_discontinued": false
+      },
+      {
+        "drug_name": "Ibuprofen / NSAIDs",
+        "dosage": "Any",
+        "route": "Oral",
+        "frequency": "DISCONTINUED",
+        "schedule_slots": [],
+        "indication": "Contraindicated post-CABG",
+        "is_discontinued": true,
+        "warning": "DO NOT TAKE NSAIDs. Use prescribed Acetaminophen for mild pain."
+      }
+    ],
+    "red_flag_warnings": [
+      "Chest pain, pressure, tightness, or pain radiating to left arm or jaw",
+      "Fever of 101.5°F (38.6°C) or higher, chills, or night sweats",
+      "Redness, swelling, heat, or persistent discharge from chest or leg incision",
+      "Clicking, popping, or shifting sensation in the breastbone (sternum)",
+      "Shortness of breath not relieved by rest or accompanied by coughing pink phlegm",
+      "Rapid weight gain of 3 lbs or more within 24 hours"
+    ],
+    "follow_up_appointments": [
+      {
+        "provider": "Dr. Sarah Jenkins",
+        "specialty": "Cardiothoracic Surgery",
+        "clinic_name": "Metro Heart & Vascular Center",
+        "date_time": "2026-09-30T10:30:00",
+        "contact_number": "555-0199"
+      },
+      {
+        "provider": "Dr. Alan Reed",
+        "specialty": "Cardiology",
+        "clinic_name": "Metro Heart Clinic",
+        "date_time": "2026-10-14T14:00:00",
+        "contact_number": "555-0120"
+      }
+    ]
+  },
+  "initial_care_tasks_day_2": [
+    {
+      "task_id": "CABG-T-01",
+      "patient_id": "PT-CABG-001",
+      "day_number": 2,
+      "category": "MEDICATION",
+      "title": "Morning Cardioprotective Medications",
+      "description": "Take Metoprolol 50mg and Aspirin 81mg with food and a glass of water.",
+      "scheduled_time": "08:00",
+      "status": "COMPLETED"
+    },
+    {
+      "task_id": "CABG-T-02",
+      "patient_id": "PT-CABG-001",
+      "day_number": 2,
+      "category": "VITAL_CHECK",
+      "title": "Morning Vitals & Weight Log",
+      "description": "Log your resting blood pressure, pulse, and dry morning weight after using the bathroom.",
+      "scheduled_time": "08:30",
+      "status": "COMPLETED"
+    },
+    {
+      "task_id": "CABG-T-03",
+      "patient_id": "PT-CABG-001",
+      "day_number": 2,
+      "category": "WOUND_CARE",
+      "title": "Sternal & Leg Incision Inspection",
+      "description": "Check incision for warmth, unusual redness, or drainage. Clean gently if instructed.",
+      "scheduled_time": "13:00",
+      "status": "PENDING"
+    },
+    {
+      "task_id": "CABG-T-04",
+      "patient_id": "PT-CABG-001",
+      "day_number": 2,
+      "category": "PHYSICAL_THERAPY",
+      "title": "Incentive Spirometer Breathing Exercise",
+      "description": "10 slow, deep inhalations using incentive spirometer to prevent lung atelectasis.",
+      "scheduled_time": "15:00",
+      "status": "PENDING"
+    },
+    {
+      "task_id": "CABG-T-05",
+      "patient_id": "PT-CABG-001",
+      "day_number": 2,
+      "category": "MEDICATION",
+      "title": "Evening Antiplatelet (Plavix 75mg)",
+      "description": "Take Clopidogrel 75mg. Essential for bypass graft protection.",
+      "scheduled_time": "20:00",
+      "status": "PENDING"
+    }
+  ]
+}
