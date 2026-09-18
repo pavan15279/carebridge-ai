@@ -153,8 +153,8 @@ class ClinicalSafetyEngine:
                 observed_value="Chest pain/pressure description",
                 threshold="Presence of acute cardiac distress symptoms",
                 risk_level=RiskLevel.CRITICAL,
-                clinical_note="Potential acute coronary syndrome, graft failure, or pulmonary embolism.",
-                emergency_directive="PLEASE CALL 911 IMMEDIATELY. Chew an aspirin if directed by emergency responders."
+                clinical_note="Reported severe chest pain is a deterministic high-priority safety trigger requiring immediate emergency evaluation. The system does not determine the underlying medical cause.",
+                emergency_directive="PLEASE CALL 911 IMMEDIATELY. Stop all physical activity and seek emergency medical evaluation. Do not drive yourself."
             ))
 
         # Deep Vein Thrombosis (DVT) Warning
