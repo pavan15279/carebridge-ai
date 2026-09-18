@@ -4,12 +4,13 @@ Main FastAPI Application Entrypoint
 """
 import json
 from pathlib import Path
-from typing import Dict, Any, List
+from typing import Dict, Any, List, Optional
 from fastapi import FastAPI, HTTPException, status
 from fastapi.middleware.cors import CORSMiddleware
 
 from app.core.config import settings
 from app.core.safety_rules import ClinicalSafetyEngine, RiskLevel
+from app.agents.orchestrator import CareBridgeOrchestrator
 from app.schemas.clinical import (
     DischargeProfile,
     PatientBase,
@@ -133,7 +134,7 @@ async def report_symptom(report: SymptomReport):
     if all_violations:
         highest_risk = RiskLevel.CRITICAL if any(v.risk_level == RiskLevel.CRITICAL for v in all_violations) else RiskLevel.HIGH
         primary_violation = all_violations[0]
-        
+
         # Formulate clinical SBAR note automatically
         sbar = SbarNote(
             situation=f"Triggered Safety Rule {primary_violation.rule_id}: {primary_violation.parameter} is {primary_violation.observed_value}.",
@@ -170,7 +171,7 @@ async def chat_message(req: ChatMessageRequest):
     """
     patient_data = load_patient_dataset(req.patient_id)
     profile = patient_data["discharge_profile"]
-    
+
     # Scan for emergency keywords first
     violations = ClinicalSafetyEngine.evaluate_symptom_keywords(req.message)
     if violations:
@@ -187,7 +188,7 @@ async def chat_message(req: ChatMessageRequest):
         f"remember to observe: '{profile['activity_restrictions']}'. "
         f"If you have any clinical doubts, please contact {profile['follow_up_appointments'][0]['provider']} at {profile['follow_up_appointments'][0]['contact_number']}."
     )
-    
+
     return ChatMessageResponse(
         reply=reply_msg,
         risk_level=RiskLevel.LOW,
@@ -251,3 +252,21 @@ async def get_triage_board():
         "low_risk_count": sum(1 for p in triage_list if p["risk_level"] == "LOW"),
         "patients": triage_list
     }
+
+
+@app.post("/api/v1/workflow/{patient_id}", tags=["Agentic Workflow"])
+async def run_workflow(patient_id: str, symptom_report: Optional[SymptomReport] = None):
+    """
+    Executes the multi-agent post-discharge workflow for a patient.
+    Coordinates: Discharge Understanding -> Recovery Planning -> Monitoring ->
+    Deterministic Safety Engine / Risk Reasoning -> Follow-Up OR Escalation.
+    """
+    if patient_id not in DATA_FILES:
+        raise HTTPException(status_code=404, detail=f"Synthetic patient {patient_id} not found.")
+
+    orchestrator = CareBridgeOrchestrator()
+    return orchestrator.run_patient_workflow(
+        patient_id=patient_id,
+        symptom_report=symptom_report
+    )
+
