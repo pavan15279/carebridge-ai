@@ -120,8 +120,8 @@ class ClinicalSafetyEngine:
                     observed_value=f"{temperature_f}°F",
                     threshold=">= 101.5°F",
                     risk_level=RiskLevel.HIGH,
-                    clinical_note="Post-operative fever threshold exceeded. Suspected surgical site infection, atelectasis, or UTI.",
-                    emergency_directive="Alerting your surgical care team now. Do not apply topical ointments to any incision without surgeon orders."
+                    clinical_note="Reported temperature exceeds the deterministic safety threshold. This is a high-priority safety trigger requiring prompt clinical evaluation. The system does not determine the underlying medical cause.",
+                    emergency_directive="Alerting your surgical care team now. Please rest quietly while your care team is notified for clinical triage evaluation."
                 ))
 
         # 6. CHF Rapid Weight Gain

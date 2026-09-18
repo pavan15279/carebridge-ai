@@ -285,15 +285,15 @@ export default function DashboardPage() {
               risk_level: 'HIGH',
               deterministic_rule_triggered: 'RULE-VITAL-TEMP (101.8°F >= 101.5°F)',
               clinical_reasoning:
-                'DETERMINISTIC SAFETY RULE VIOLATED: Patient measured core temperature of 101.8°F, exceeding configured threshold 101.5°F. Early sign of potential deep sternal or superficial surgical site infection.',
+                'Reported temperature exceeds the deterministic safety threshold. This is a high-priority safety trigger requiring prompt clinical evaluation. The system does not determine the underlying medical cause.',
               immediate_patient_directive:
-                'Notify your surgical care team immediately. Avoid antipyretics like acetaminophen until instructed by clinical staff.',
+                'Alerting your surgical care team now. Please rest quietly while your care team is notified for clinical triage evaluation.',
               care_team_action_required: true,
               sbar: {
                 situation: 'Triggered Safety Rule RULE-VITAL-TEMP: core temperature 101.8°F.',
                 background: `Patient ${selectedPatientId} (${patient.first_name} ${patient.last_name}), post-op Day 2 CABG x3.`,
-                assessment: 'Suspected surgical site infection or post-pericardiotomy syndrome.',
-                recommendation: 'Cardiothoracic triage nurse should contact patient within 30 minutes for wound inspection triage.',
+                assessment: 'Deterministic temperature safety threshold breached. Urgent in-person or telephone triage evaluation required by surgical team.',
+                recommendation: 'Cardiothoracic triage nurse or on-call clinician should contact patient promptly for clinical evaluation.',
               },
             },
             escalation_ticket: {
@@ -309,8 +309,8 @@ export default function DashboardPage() {
                   '⚠️ AI-GENERATED DRAFT — REQUIRES HEALTHCARE PROFESSIONAL CLINICAL REVIEW AND VALIDATION BEFORE ACTION',
                 situation: 'Triggered Safety Rule RULE-VITAL-TEMP: core temp measured 101.8°F.',
                 background: `Patient ${selectedPatientId}, 71yo M post-CABG x3 on post-op day 2. Incision warmth noted.`,
-                assessment: 'Elevated post-operative temperature indicates possible surgical site infection. Safety rule locked to HIGH.',
-                recommendation: 'Clinical review required. Order wound swab, CBC, and recommend same-day clinic evaluation.',
+                assessment: 'Reported temperature exceeds the deterministic safety threshold. High-priority safety trigger requiring clinical evaluation. The system does not determine the underlying medical cause.',
+                recommendation: 'Clinical triage review required. Clinician to contact patient and determine clinical management plan.',
                 generated_at: new Date().toISOString(),
               },
             },
