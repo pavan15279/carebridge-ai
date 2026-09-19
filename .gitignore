@@ -37,6 +37,9 @@ yarn-error.log*
 out/
 build/
 dist/
+*.tsbuildinfo
+frontend/tsconfig.tsbuildinfo
+.env.local
 
 # IDE & OS
 .idea/

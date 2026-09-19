@@ -6,7 +6,7 @@ ALWAYS executes the Deterministic Clinical Safety Engine first.
 Never bypasses deterministic rules. Never diagnoses or prescribes.
 """
 from typing import Any, Dict, Optional, Union
-from app.core.safety_rules import ClinicalSafetyEngine, RiskLevel
+from app.core.safety_rules import ClinicalSafetyEngine, RiskLevel, resolve_care_team_label
 from app.schemas.clinical import DischargeProfile, RiskAssessment, SbarNote, SymptomReport
 
 
@@ -35,6 +35,17 @@ class RiskReasoningAgent:
         if isinstance(report, dict):
             report = SymptomReport.model_validate(report)
 
+        # Resolve context-appropriate care team routing label
+        first_specialty = (
+            profile.follow_up_appointments[0].specialty
+            if (profile and profile.follow_up_appointments)
+            else None
+        )
+        care_team = resolve_care_team_label(
+            primary_diagnosis=profile.primary_diagnosis if profile else None,
+            specialty=first_specialty
+        )
+
         # 1. Deterministic Vitals Check (Pre-LLM)
         vital_violations = ClinicalSafetyEngine.evaluate_vitals(
             systolic_bp=report.systolic_bp,
@@ -42,11 +53,15 @@ class RiskReasoningAgent:
             heart_rate=report.heart_rate,
             spo2=report.spo2,
             temperature_f=report.measured_temp,
-            weight_gain_24h_lbs=report.weight_gain_24h_lbs
+            weight_gain_24h_lbs=report.weight_gain_24h_lbs,
+            care_team=care_team
         )
 
         # 2. Deterministic Symptom Keyword Check
-        symptom_violations = ClinicalSafetyEngine.evaluate_symptom_keywords(report.symptom_description)
+        symptom_violations = ClinicalSafetyEngine.evaluate_symptom_keywords(
+            report.symptom_description,
+            care_team=care_team
+        )
 
         all_violations = vital_violations + symptom_violations
 
@@ -71,11 +86,11 @@ class RiskReasoningAgent:
                 ),
                 assessment=(
                     f"{primary.clinical_note} Deterministic safety rule breached. "
-                    f"Potential post-discharge complication requiring prompt clinical evaluation."
+                    f"Requires prompt clinical evaluation by the {care_team}."
                 ),
                 recommendation=(
-                    "Clinical triage nurse or surgical attending should review this case and initiate patient contact. "
-                    "Confirm symptoms directly with patient before clinical intervention."
+                    f"Clinical triage nurse or {care_team} should review this case and initiate prompt patient contact. "
+                    f"Confirm symptoms and clinical status directly with patient before intervention."
                 )
             )
 

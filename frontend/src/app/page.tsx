@@ -27,7 +27,18 @@ import {
   ListTodo,
   AlertOctagon,
   Calendar,
-  Check
+  Check,
+  Upload,
+  Send,
+  X,
+  FileUp,
+  FileCheck2,
+  Sliders,
+  Clock3,
+  UserPlus,
+  LogOut,
+  Lock,
+  Mail
 } from 'lucide-react';
 
 import {
@@ -37,12 +48,16 @@ import {
   RiskLevel,
   RiskAssessment,
   SbarNote,
-  SymptomReport
+  SymptomReport,
+  RecoveryEvent,
+  RecoveryState,
+  CreatePatientRequest
 } from '../lib/types';
 import {
-  DEMO_PATIENT,
-  DEMO_DISCHARGE_PROFILE,
-  DEMO_CARE_TASKS,
+  SYNTHETIC_PATIENTS,
+  SYNTHETIC_DISCHARGE_PROFILES,
+  SYNTHETIC_CARE_TASKS,
+  SYNTHETIC_MILESTONES,
   DEMO_TRIAGE_PATIENTS
 } from '../lib/synthetic-data';
 
@@ -82,10 +97,11 @@ interface WorkflowResult {
   discharge_profile: DischargeProfile;
   recovery_plan?: {
     patient_id: string;
-    generated_for_diagnosis: string;
+    generated_for_diagnosis?: string;
     duration_days: number;
-    current_phase: number;
-    phases: Array<{
+    current_phase: number | string;
+    milestones?: Array<{ day?: number; title?: string; description?: string } | string>;
+    phases?: Array<{
       phase_number: number;
       name: string;
       day_start: number;
@@ -96,39 +112,204 @@ interface WorkflowResult {
   monitoring?: {
     total_tasks: number;
     completed: number;
+    completed_count?: number;
     pending: number;
     missed: number;
     skipped: number;
     adherence_percentage: number;
-    active_tasks: CareTask[];
+    active_tasks?: CareTask[];
   };
   symptom_report?: SymptomReport | null;
   risk_assessment?: RiskAssessment | null;
   escalation_ticket?: EscalationTicketData | null;
   followup_response?: FollowUpResponseData | null;
   workflow_route?: string | null;
+  recovery_state?: RecoveryState | null;
   status?: string;
 }
 
-// Demo patients list for patient selector
-const PATIENT_OPTIONS: Array<{ id: string; name: string; condition: string; age: number; gender: string }> = [
-  { id: 'PT-CABG-001', name: 'James Harrison', condition: 'CABG x3 (Triple Bypass)', age: 71, gender: 'Male' },
-  { id: 'PT-TKA-002', name: 'Elena Rostova', condition: 'Right Total Knee Arthroplasty', age: 64, gender: 'Female' },
-  { id: 'PT-CHF-003', name: 'Marcus Vance', condition: 'Heart Failure Exacerbation', age: 68, gender: 'Male' },
-  { id: 'PT-PNA-004', name: 'Sarah Chen', condition: 'Community-Acquired Pneumonia', age: 52, gender: 'Female' },
+// Demo & dynamic patients list for patient selector
+export interface PatientOption {
+  id: string;
+  name: string;
+  condition: string;
+  age?: number;
+  gender?: string;
+  is_demo?: boolean;
+}
+
+const DEFAULT_PATIENT_OPTIONS: PatientOption[] = [
+  { id: 'PT-CABG-001', name: 'James Harrison', condition: 'CABG x3 (Triple Bypass)', age: 71, gender: 'Male', is_demo: true },
+  { id: 'PT-TKA-002', name: 'Elena Rostova', condition: 'Right Total Knee Arthroplasty', age: 66, gender: 'Female', is_demo: true },
+  { id: 'PT-CHF-003', name: 'Marcus Vance', condition: 'Heart Failure Exacerbation', age: 68, gender: 'Male', is_demo: true },
+  { id: 'PT-PNA-004', name: 'Sarah Chen', condition: 'Community-Acquired Pneumonia', age: 54, gender: 'Female', is_demo: true },
 ];
 
 export default function DashboardPage() {
+  // Authentication & Demo Session State
+  const [isAuthenticated, setIsAuthenticated] = useState<boolean>(false);
+  const [authPatientId, setAuthPatientId] = useState<string>('');
+  const [authPatientName, setAuthPatientName] = useState<string>('');
+  const [authSessionToken, setAuthSessionToken] = useState<string>('');
+  const [authChecked, setAuthChecked] = useState<boolean>(false);
+
+  // Login Form State
+  const [loginMode, setLoginMode] = useState<'demo' | 'email'>('demo');
+  const [loginPatientId, setLoginPatientId] = useState<string>('PT-CABG-001');
+  const [loginEmail, setLoginEmail] = useState<string>('');
+  const [loginPassword, setLoginPassword] = useState<string>('CareBridge@123');
+  const [loginLoading, setLoginLoading] = useState<boolean>(false);
+  const [loginError, setLoginError] = useState<string | null>(null);
+
+  // Signup State
+  const [showSignup, setShowSignup] = useState<boolean>(false);
+  const [signupFullName, setSignupFullName] = useState<string>('');
+  const [signupEmail, setSignupEmail] = useState<string>('');
+  const [signupPassword, setSignupPassword] = useState<string>('');
+  const [signupConfirmPassword, setSignupConfirmPassword] = useState<string>('');
+  const [signupLoading, setSignupLoading] = useState<boolean>(false);
+  const [signupError, setSignupError] = useState<string | null>(null);
+
   const [selectedPatientId, setSelectedPatientId] = useState<string>('PT-CABG-001');
+  const [patientOptions, setPatientOptions] = useState<PatientOption[]>(DEFAULT_PATIENT_OPTIONS);
   const [backendOnline, setBackendOnline] = useState<boolean | null>(null);
   const [loading, setLoading] = useState<boolean>(false);
   const [activeScenario, setActiveScenario] = useState<string>('routine');
   
-  // Patient & workflow state
-  const [patient, setPatient] = useState<PatientBase>(DEMO_PATIENT);
-  const [tasks, setTasks] = useState<CareTask[]>(DEMO_CARE_TASKS);
+  // Interactive simulation mode: 'scenarios' | 'custom_input'
+  const [simulationMode, setSimulationMode] = useState<'scenarios' | 'custom_input'>('scenarios');
+
+  // Real-time custom telemetry input fields
+  const [customSymptom, setCustomSymptom] = useState<string>('');
+  const [customSeverity, setCustomSeverity] = useState<number>(3);
+  const [customTemp, setCustomTemp] = useState<string>('');
+  const [customSysBP, setCustomSysBP] = useState<string>('');
+  const [customDiaBP, setCustomDiaBP] = useState<string>('');
+  const [customHeartRate, setCustomHeartRate] = useState<string>('');
+  const [customSpo2, setCustomSpo2] = useState<string>('');
+  const [customWeightGain, setCustomWeightGain] = useState<string>('');
+
+  // Upload modal state
+  const [isUploadModalOpen, setIsUploadModalOpen] = useState<boolean>(false);
+  const [uploadText, setUploadText] = useState<string>('');
+  const [uploadLoading, setUploadLoading] = useState<boolean>(false);
+  const [uploadError, setUploadError] = useState<string | null>(null);
+
+  // Add New Patient Modal state
+  const [isAddPatientModalOpen, setIsAddPatientModalOpen] = useState<boolean>(false);
+  const [newPatientName, setNewPatientName] = useState<string>('');
+  const [newPatientAge, setNewPatientAge] = useState<string>('');
+  const [newPatientGender, setNewPatientGender] = useState<string>('Male');
+  const [newPatientContact, setNewPatientContact] = useState<string>('');
+  const [newPatientEmergencyContact, setNewPatientEmergencyContact] = useState<string>('');
+  const [newPatientDischargeDate, setNewPatientDischargeDate] = useState<string>('');
+  const [newPatientDiagnosis, setNewPatientDiagnosis] = useState<string>('');
+  const [newPatientProcedure, setNewPatientProcedure] = useState<string>('');
+  const [newPatientCareTeam, setNewPatientCareTeam] = useState<string>('');
+  const [newPatientDischargeText, setNewPatientDischargeText] = useState<string>('');
+  const [createPatientLoading, setCreatePatientLoading] = useState<boolean>(false);
+  const [createPatientError, setCreatePatientError] = useState<string | null>(null);
+
+  // Dynamic patient maps for local offline & instant switching access
+  const [customPatientsMap, setCustomPatientsMap] = useState<Record<string, PatientBase>>({});
+  const [customProfilesMap, setCustomProfilesMap] = useState<Record<string, DischargeProfile>>({});
+
+  // Clinical review verification state
+  const [clinicianName, setClinicianName] = useState<string>('Dr. Evelyn Reed, MD (Cardiothoracic Surgery)');
+  const [reviewNotes, setReviewNotes] = useState<string>('Evaluated patient telemetry; authorized continued home recovery monitoring.');
+  const [reviewLoading, setReviewLoading] = useState<boolean>(false);
+  const [reviewSuccessMessage, setReviewSuccessMessage] = useState<string | null>(null);
+
+  // Recovery timeline events
+  const [timelineEvents, setTimelineEvents] = useState<RecoveryEvent[]>([]);
+
+  // Patient & workflow state initialized from selected patient's dataset
+  const [patient, setPatient] = useState<PatientBase>(
+    () => SYNTHETIC_PATIENTS['PT-CABG-001']
+  );
+  const [tasks, setTasks] = useState<CareTask[]>(
+    () => SYNTHETIC_CARE_TASKS['PT-CABG-001'] || []
+  );
   const [workflowState, setWorkflowState] = useState<WorkflowResult | null>(null);
   const [apiError, setApiError] = useState<string | null>(null);
+
+  // Active discharge profile derived from live workflow or custom profile or selected patient's synthetic profile
+  const activeProfile: DischargeProfile =
+    workflowState?.discharge_profile ||
+    customProfilesMap[selectedPatientId] ||
+    SYNTHETIC_DISCHARGE_PROFILES[selectedPatientId] || {
+      profile_id: `DP-${selectedPatientId}`,
+      patient_id: selectedPatientId,
+      primary_diagnosis: patient.condition_category || 'Post-Discharge Recovery',
+      procedures: [],
+      discharge_date: patient.discharge_date || '2026-09-18',
+      dietary_instructions: 'Standard recovery nutrition with oral fluid hydration as tolerated.',
+      activity_restrictions: 'Gentle resting and light activity as tolerated. Avoid strenuous physical exertion.',
+      wound_care_instructions: 'Not specified in available discharge information.',
+      medications: [],
+      red_flag_warnings: [
+        'Core body temperature of 101.5°F (38.6°C) or higher',
+        'Severe chest pain, crushing pressure, or difficulty breathing',
+        'Sudden unilateral calf pain, swelling, or redness',
+        'Severe dizziness, persistent nausea, or sudden loss of consciousness'
+      ],
+      follow_up_appointments: []
+    };
+
+  // Fetch chronological timeline from backend
+  const fetchTimeline = useCallback(async (patientId: string) => {
+    try {
+      const res = await fetch(`${API_BASE_URL}/api/v1/patients/${patientId}/timeline`, {
+        method: 'GET',
+        headers: {
+          Accept: 'application/json',
+          ...(authSessionToken ? { Authorization: `Bearer ${authSessionToken}` } : {}),
+        },
+      });
+      if (res.ok) {
+        const data: RecoveryEvent[] = await res.json();
+        setTimelineEvents(data);
+      }
+    } catch {
+      // Offline fallback
+    }
+  }, [authSessionToken]);
+
+  // Fetch patient list from backend to include any dynamically uploaded patients
+  const fetchPatientList = useCallback(async () => {
+    try {
+      const res = await fetch(`${API_BASE_URL}/api/v1/patients`, {
+        method: 'GET',
+        headers: { Accept: 'application/json' },
+      });
+      if (res.ok) {
+        const data: PatientBase[] = await res.json();
+        const map: Record<string, PatientBase> = {};
+        const formatted: PatientOption[] = data.map((p) => {
+          map[p.id] = p;
+          const isDemo =
+            p.is_demo !== undefined
+              ? p.is_demo
+              : p.id.startsWith('PT-CABG') ||
+                p.id.startsWith('PT-TKA') ||
+                p.id.startsWith('PT-CHF') ||
+                p.id.startsWith('PT-PNA');
+          return {
+            id: p.id,
+            name: `${p.first_name} ${p.last_name}`.trim(),
+            condition: p.condition_category || 'Post-Discharge',
+            age: p.age,
+            gender: p.gender,
+            is_demo: isDemo,
+          };
+        });
+        setPatientOptions(formatted);
+        setCustomPatientsMap((prev) => ({ ...map, ...prev }));
+      }
+    } catch {
+      // Retain default demo list
+    }
+  }, []);
 
   // Check backend health on mount
   const checkBackendHealth = useCallback(async () => {
@@ -148,46 +329,94 @@ export default function DashboardPage() {
     }
   }, []);
 
+  // Restore authenticated session from sessionStorage on mount
+  useEffect(() => {
+    try {
+      const stored = sessionStorage.getItem('carebridge_session');
+      if (stored) {
+        const parsed = JSON.parse(stored);
+        if (parsed.session_token && parsed.patient_id) {
+          setAuthSessionToken(parsed.session_token);
+          setAuthPatientId(parsed.patient_id);
+          setAuthPatientName(parsed.patient_name || parsed.patient_id);
+          setSelectedPatientId(parsed.patient_id);
+          setIsAuthenticated(true);
+        }
+      }
+    } catch {
+      // Ignore sessionStorage parsing error
+    } finally {
+      setAuthChecked(true);
+    }
+  }, []);
+
   useEffect(() => {
     checkBackendHealth();
-  }, [checkBackendHealth]);
+    fetchPatientList();
+  }, [checkBackendHealth, fetchPatientList]);
+
+  useEffect(() => {
+    if (isAuthenticated && selectedPatientId) {
+      fetchTimeline(selectedPatientId);
+    }
+  }, [isAuthenticated, selectedPatientId, fetchTimeline]);
 
   // Execute workflow via API or robust local fallback
   const runSimulationScenario = useCallback(
-    async (scenarioKey: 'routine' | 'mild' | 'fever' | 'chest_pain') => {
+    async (scenarioKey: 'routine' | 'mild' | 'fever' | 'chest_pain', targetPatientId?: string) => {
+      const patientId = targetPatientId || selectedPatientId;
+      const currentPatient = SYNTHETIC_PATIENTS[patientId] || SYNTHETIC_PATIENTS['PT-CABG-001'];
+      const currentProfile = SYNTHETIC_DISCHARGE_PROFILES[patientId] || SYNTHETIC_DISCHARGE_PROFILES['PT-CABG-001'];
+
       setActiveScenario(scenarioKey);
       setLoading(true);
       setApiError(null);
 
-      // Build payload based on scenario
+      // Build patient-appropriate payload based on scenario
       let symptomReport: SymptomReport | null = null;
       if (scenarioKey === 'mild') {
+        let mildDesc = 'Mild incisional discomfort when moving; no redness or unusual swelling.';
+        let mildLocation = 'surgical site';
+        if (patientId === 'PT-TKA-002') {
+          mildDesc = 'Mild right knee stiffness and soreness after morning physical therapy; dressing dry and intact.';
+          mildLocation = 'right knee';
+        } else if (patientId === 'PT-CHF-003') {
+          mildDesc = 'Mild fatigue and leg heaviness after walking; no shortness of breath, ankles comfortable.';
+          mildLocation = 'lower extremities';
+        } else if (patientId === 'PT-PNA-004') {
+          mildDesc = 'Mild throat irritation and occasional dry cough; breathing comfortable at rest.';
+          mildLocation = 'upper respiratory';
+        } else if (patientId === 'PT-CABG-001') {
+          mildDesc = 'Mild chest incision soreness when taking deep breaths; no redness or fluid noted.';
+          mildLocation = 'sternal incision';
+        }
+
         symptomReport = {
-          patient_id: selectedPatientId,
-          symptom_description: 'Mild incision soreness when taking deep breaths; no redness or fluid noted.',
+          patient_id: patientId,
+          symptom_description: mildDesc,
           severity_score: 3,
           measured_temp: 98.6,
           systolic_bp: 124,
           diastolic_bp: 78,
           heart_rate: 72,
           spo2: 98,
-          anatomical_location: 'sternal incision',
+          anatomical_location: mildLocation,
         };
       } else if (scenarioKey === 'fever') {
         symptomReport = {
-          patient_id: selectedPatientId,
-          symptom_description: 'Patient reports feeling chilled and feverish; chest incision feels increasingly hot.',
+          patient_id: patientId,
+          symptom_description: 'Patient reports feeling chilled and feverish; measured temperature elevated.',
           severity_score: 6,
           measured_temp: 101.8,
           systolic_bp: 128,
           diastolic_bp: 82,
           heart_rate: 96,
           spo2: 97,
-          anatomical_location: 'chest incision',
+          anatomical_location: patientId === 'PT-TKA-002' ? 'right knee' : patientId === 'PT-CABG-001' ? 'chest incision' : 'core body',
         };
       } else if (scenarioKey === 'chest_pain') {
         symptomReport = {
-          patient_id: selectedPatientId,
+          patient_id: patientId,
           symptom_description: 'Severe crushing chest pain radiating to the jaw and left arm; onset 15 minutes ago.',
           severity_score: 9,
           measured_temp: 98.7,
@@ -202,20 +431,32 @@ export default function DashboardPage() {
       // Try calling live backend API first
       let success = false;
       try {
-        const response = await fetch(`${API_BASE_URL}/api/v1/workflow/${selectedPatientId}`, {
+        const response = await fetch(`${API_BASE_URL}/api/v1/workflow/${patientId}`, {
           method: 'POST',
-          headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
-          body: symptomReport ? JSON.stringify(symptomReport) : JSON.stringify({}),
+          headers: {
+            'Content-Type': 'application/json',
+            Accept: 'application/json',
+            ...(authSessionToken ? { Authorization: `Bearer ${authSessionToken}` } : {}),
+          },
+          body: symptomReport ? JSON.stringify(symptomReport) : undefined,
         });
 
         if (response.ok) {
           const data: WorkflowResult = await response.json();
           setWorkflowState(data);
+
+          // Update tasks from live monitoring agent if tasks returned
+          if (data.monitoring?.active_tasks && data.monitoring.active_tasks.length > 0) {
+            setTasks(data.monitoring.active_tasks);
+          } else {
+            setTasks(SYNTHETIC_CARE_TASKS[patientId] || []);
+          }
+
           setBackendOnline(true);
           success = true;
         } else {
           setBackendOnline(false);
-          setApiError(`Backend returned status ${response.status}. Using high-fidelity synthetic fallback.`);
+          setApiError(`Backend returned status ${response.status}. Using patient-specific synthetic fallback.`);
         }
       } catch (err: unknown) {
         setBackendOnline(false);
@@ -223,21 +464,24 @@ export default function DashboardPage() {
         setApiError(`Backend unreachable at ${API_BASE_URL} (${message}). Operating in offline mode.`);
       }
 
-      // If backend was offline, provide deterministic local fallback matching backend agents
+      // If backend was offline, provide patient-grounded deterministic local fallback
       if (!success) {
+        // Fallback tasks for selected patient
+        setTasks(SYNTHETIC_CARE_TASKS[patientId] || []);
+
         let fallbackResult: WorkflowResult;
 
         if (scenarioKey === 'chest_pain') {
           fallbackResult = {
-            patient_id: selectedPatientId,
-            patient_name: patient.first_name + ' ' + patient.last_name,
-            primary_diagnosis: DEMO_DISCHARGE_PROFILE.primary_diagnosis,
-            discharge_profile: DEMO_DISCHARGE_PROFILE,
+            patient_id: patientId,
+            patient_name: `${currentPatient.first_name} ${currentPatient.last_name}`,
+            primary_diagnosis: currentProfile.primary_diagnosis,
+            discharge_profile: currentProfile,
             workflow_route: 'ESCALATION_COORDINATION_AGENT',
             status: 'COMPLETED',
             symptom_report: symptomReport,
             risk_assessment: {
-              patient_id: selectedPatientId,
+              patient_id: patientId,
               risk_level: 'CRITICAL',
               deterministic_rule_triggered: 'RULE-SYMP-CHEST ("chest pain")',
               clinical_reasoning:
@@ -247,15 +491,15 @@ export default function DashboardPage() {
               care_team_action_required: true,
               sbar: {
                 situation: 'Triggered Safety Rule RULE-SYMP-CHEST: acute chest distress reported.',
-                background: `Patient ${selectedPatientId} (${patient.first_name} ${patient.last_name}), post-op Day 2 CABG x3.`,
+                background: `Patient ${patientId} (${currentPatient.first_name} ${currentPatient.last_name}), post-discharge Day 2 for ${currentProfile.primary_diagnosis}.`,
                 assessment: 'Deterministic high-priority safety trigger breached. Urgent in-person emergency evaluation required.',
-                recommendation: 'Immediate 911 dispatch and on-call cardiothoracic surgical notification.',
+                recommendation: 'Immediate 911 dispatch and on-call clinical notification.',
               },
             },
             escalation_ticket: {
               ticket_id: `ESC-${Date.now().toString().slice(-6)}`,
-              patient_id: selectedPatientId,
-              patient_name: `${patient.first_name} ${patient.last_name}`,
+              patient_id: patientId,
+              patient_name: `${currentPatient.first_name} ${currentPatient.last_name}`,
               risk_level: 'CRITICAL',
               triggered_rule: 'RULE-SYMP-CHEST (Chest Pain)',
               status: 'OPEN',
@@ -264,24 +508,24 @@ export default function DashboardPage() {
                 disclaimer:
                   '⚠️ AI-GENERATED DRAFT — REQUIRES HEALTHCARE PROFESSIONAL CLINICAL REVIEW AND VALIDATION BEFORE ACTION',
                 situation: 'Triggered Safety Rule RULE-SYMP-CHEST: acute chest distress reported.',
-                background: `Patient ${selectedPatientId}, 71yo M post-CABG x3 on post-op day 2.`,
+                background: `Patient ${patientId} (${currentPatient.first_name} ${currentPatient.last_name}), ${currentPatient.age}yo ${currentPatient.gender} on post-discharge Day 2.`,
                 assessment: 'Deterministic safety trigger requiring immediate emergency evaluation. The system does not determine the underlying medical cause.',
-                recommendation: 'Dispatch 911 emergency services; alert cardiothoracic surgery on-call.',
+                recommendation: 'Dispatch 911 emergency services; alert on-call clinical team.',
                 generated_at: new Date().toISOString(),
               },
             },
           };
         } else if (scenarioKey === 'fever') {
           fallbackResult = {
-            patient_id: selectedPatientId,
-            patient_name: patient.first_name + ' ' + patient.last_name,
-            primary_diagnosis: DEMO_DISCHARGE_PROFILE.primary_diagnosis,
-            discharge_profile: DEMO_DISCHARGE_PROFILE,
+            patient_id: patientId,
+            patient_name: `${currentPatient.first_name} ${currentPatient.last_name}`,
+            primary_diagnosis: currentProfile.primary_diagnosis,
+            discharge_profile: currentProfile,
             workflow_route: 'ESCALATION_COORDINATION_AGENT',
             status: 'COMPLETED',
             symptom_report: symptomReport,
             risk_assessment: {
-              patient_id: selectedPatientId,
+              patient_id: patientId,
               risk_level: 'HIGH',
               deterministic_rule_triggered: 'RULE-VITAL-TEMP (101.8°F >= 101.5°F)',
               clinical_reasoning:
@@ -291,15 +535,15 @@ export default function DashboardPage() {
               care_team_action_required: true,
               sbar: {
                 situation: 'Triggered Safety Rule RULE-VITAL-TEMP: core temperature 101.8°F.',
-                background: `Patient ${selectedPatientId} (${patient.first_name} ${patient.last_name}), post-op Day 2 CABG x3.`,
-                assessment: 'Deterministic temperature safety threshold breached. Urgent in-person or telephone triage evaluation required by surgical team.',
-                recommendation: 'Cardiothoracic triage nurse or on-call clinician should contact patient promptly for clinical evaluation.',
+                background: `Patient ${patientId} (${currentPatient.first_name} ${currentPatient.last_name}), post-discharge Day 2 for ${currentProfile.primary_diagnosis}.`,
+                assessment: 'Deterministic temperature safety threshold breached. Urgent in-person or telephone triage evaluation required by care team.',
+                recommendation: 'Triage nurse or on-call clinician should contact patient promptly for clinical evaluation.',
               },
             },
             escalation_ticket: {
               ticket_id: `ESC-${Date.now().toString().slice(-6)}`,
-              patient_id: selectedPatientId,
-              patient_name: `${patient.first_name} ${patient.last_name}`,
+              patient_id: patientId,
+              patient_name: `${currentPatient.first_name} ${currentPatient.last_name}`,
               risk_level: 'HIGH',
               triggered_rule: 'RULE-VITAL-TEMP (101.8°F)',
               status: 'OPEN',
@@ -308,7 +552,7 @@ export default function DashboardPage() {
                 disclaimer:
                   '⚠️ AI-GENERATED DRAFT — REQUIRES HEALTHCARE PROFESSIONAL CLINICAL REVIEW AND VALIDATION BEFORE ACTION',
                 situation: 'Triggered Safety Rule RULE-VITAL-TEMP: core temp measured 101.8°F.',
-                background: `Patient ${selectedPatientId}, 71yo M post-CABG x3 on post-op day 2. Incision warmth noted.`,
+                background: `Patient ${patientId} (${currentPatient.first_name} ${currentPatient.last_name}), ${currentPatient.age}yo ${currentPatient.gender} on post-discharge Day 2.`,
                 assessment: 'Reported temperature exceeds the deterministic safety threshold. High-priority safety trigger requiring clinical evaluation. The system does not determine the underlying medical cause.',
                 recommendation: 'Clinical triage review required. Clinician to contact patient and determine clinical management plan.',
                 generated_at: new Date().toISOString(),
@@ -317,28 +561,28 @@ export default function DashboardPage() {
           };
         } else if (scenarioKey === 'mild') {
           fallbackResult = {
-            patient_id: selectedPatientId,
-            patient_name: patient.first_name + ' ' + patient.last_name,
-            primary_diagnosis: DEMO_DISCHARGE_PROFILE.primary_diagnosis,
-            discharge_profile: DEMO_DISCHARGE_PROFILE,
+            patient_id: patientId,
+            patient_name: `${currentPatient.first_name} ${currentPatient.last_name}`,
+            primary_diagnosis: currentProfile.primary_diagnosis,
+            discharge_profile: currentProfile,
             workflow_route: 'FOLLOW_UP_AGENT',
             status: 'COMPLETED',
             symptom_report: symptomReport,
             risk_assessment: {
-              patient_id: selectedPatientId,
+              patient_id: patientId,
               risk_level: 'LOW',
               deterministic_rule_triggered: undefined,
               clinical_reasoning:
-                'No deterministic safety thresholds violated. Mild incisional soreness (severity 3/10) with normal vitals (temp 98.6°F, SpO2 98%) is consistent with expected healing after median sternotomy.',
+                'No deterministic safety thresholds violated. Reported mild discomfort is consistent with expected healing trajectory.',
               immediate_patient_directive:
-                'Continue resting and adhering to sternal precautions. Use your cough pillow for sternal splinting. If pain intensifies, log it immediately.',
+                `Continue resting and adhering to prescribed discharge guidelines: '${currentProfile.activity_restrictions}'. If discomfort increases, report it promptly.`,
               care_team_action_required: false,
             },
             followup_response: {
               reply:
-                `Hello ${patient.first_name}, mild soreness around your incision when breathing deeply is very common during days 2–7 of your CABG recovery. Your temperature of 98.6°F and oxygen of 98% are reassuring. Please continue hugging your cough pillow during deep breaths and avoid lifting anything over 10 lbs.`,
+                `Hello ${currentPatient.first_name}, based on your discharge instructions for ${currentProfile.primary_diagnosis}, please keep in mind: '${currentProfile.activity_restrictions}'. For dietary management, continue adhering to: '${currentProfile.dietary_instructions}'. If you have ongoing concerns, please contact ${currentPatient.primary_care_physician} at ${currentPatient.clinic_phone}.`,
               risk_level: 'LOW',
-              suggested_action: 'Complete your afternoon incentive spirometer breathing exercise (10 deep breaths).',
+              suggested_action: 'Complete your scheduled daily care tasks and monitor your resting vitals.',
               disclaimer:
                 'CareBridge AI is a clinical decision-support prototype and does not replace licensed healthcare professionals.',
             },
@@ -346,27 +590,27 @@ export default function DashboardPage() {
         } else {
           // Routine check-in
           fallbackResult = {
-            patient_id: selectedPatientId,
-            patient_name: patient.first_name + ' ' + patient.last_name,
-            primary_diagnosis: DEMO_DISCHARGE_PROFILE.primary_diagnosis,
-            discharge_profile: DEMO_DISCHARGE_PROFILE,
+            patient_id: patientId,
+            patient_name: `${currentPatient.first_name} ${currentPatient.last_name}`,
+            primary_diagnosis: currentProfile.primary_diagnosis,
+            discharge_profile: currentProfile,
             workflow_route: 'FOLLOW_UP_AGENT',
             status: 'COMPLETED',
             risk_assessment: {
-              patient_id: selectedPatientId,
+              patient_id: patientId,
               risk_level: 'LOW',
               deterministic_rule_triggered: undefined,
               clinical_reasoning:
                 'Routine daily recovery monitoring: Vitals nominal, task adherence at baseline. No safety rule deviations detected.',
               immediate_patient_directive:
-                'Continue with scheduled medications and incentive spirometry as ordered in your discharge plan.',
+                `Continue following your discharge care plan and activity guidelines: '${currentProfile.activity_restrictions}'.`,
               care_team_action_required: false,
             },
             followup_response: {
               reply:
-                `Good day ${patient.first_name}. Your morning vitals and medication adherence are logged on schedule. Your recovery is proceeding according to Phase 1 (Immediate Acute Post-Op). Keep up the gentle walking and rest.`,
+                `Good day ${currentPatient.first_name}. Your recovery tracking is logged on schedule for ${currentProfile.primary_diagnosis}. Please continue following your discharge instructions and scheduled medications.`,
               risk_level: 'LOW',
-              suggested_action: 'Perform your afternoon incision check and spirometry.',
+              suggested_action: 'Review today\'s scheduled care tasks and resting vitals log.',
               disclaimer:
                 'CareBridge AI is a clinical decision-support prototype and does not replace licensed healthcare professionals.',
             },
@@ -378,46 +622,835 @@ export default function DashboardPage() {
 
       setLoading(false);
     },
-    [selectedPatientId, patient.first_name, patient.last_name]
+    [selectedPatientId]
   );
 
-  // Run routine scenario on mount or patient change
-  useEffect(() => {
-    // Update active patient details
-    const found = PATIENT_OPTIONS.find((p) => p.id === selectedPatientId);
-    if (found) {
-      setPatient({
-        ...DEMO_PATIENT,
-        id: found.id,
-        first_name: found.name.split(' ')[0],
-        last_name: found.name.split(' ')[1] || '',
-        age: found.age,
-        gender: found.gender,
-        condition_category: found.condition,
-      });
-    }
-    runSimulationScenario('routine');
-  }, [selectedPatientId, runSimulationScenario]);
+  // Sample discharge text template for instant 1-click testing
+  const SAMPLE_DISCHARGE_TEXT = `DISCHARGE SUMMARY
+Patient: Robert Miller
+Age: 62
+Gender: Male
+Date of Admission: 2026-09-12
+Date of Discharge: 2026-09-17
+Attending Physician: Dr. Sarah Jenkins, MD
+Primary Diagnosis: Acute Appendicitis s/p Laparoscopic Appendectomy
+Procedure: Laparoscopic Appendectomy
+Allergies: Penicillin (severe hives)
+Discharge Medications:
+1. Acetaminophen 650 mg PO Q6H PRN pain
+2. Ciprofloxacin 500 mg PO BID x 5 days
+Activity Restrictions: No lifting over 10 lbs for 2 weeks. Ambulate 15 minutes daily.
+Dietary Instructions: Low residue diet for 48 hours, advance as tolerated. Hydrate 2L daily.
+Wound Care: Keep laparoscopic port dressings clean and dry. Remove sterile strips after 7 days.
+Red Flag Warning Signs: Fever >= 101.5 F, persistent nausea, worsening right lower quadrant pain.
+Follow-Up: Outpatient clinic appointment in 10 days with Dr. Jenkins at (555) 234-5678.`;
 
-  // Toggle care task status
-  const handleToggleTask = (taskId: string) => {
+  // Handle patient selection change: completely reset state and trigger fresh workflow
+  const handleSelectPatient = useCallback(
+    (newPatientId: string) => {
+      setSelectedPatientId(newPatientId);
+      const foundOption = patientOptions.find((p) => p.id === newPatientId);
+      const nextPatient =
+        SYNTHETIC_PATIENTS[newPatientId] ||
+        customPatientsMap[newPatientId] || {
+          id: newPatientId,
+          first_name: foundOption?.name.split(' ')[0] || 'Patient',
+          last_name: foundOption?.name.split(' ').slice(1).join(' ') || 'User',
+          age: foundOption?.age,
+          gender: foundOption?.gender || 'Not specified',
+          discharge_date: '2026-09-18',
+          condition_category: foundOption?.condition || 'Post-Discharge Recovery',
+          primary_care_physician: 'Not specified',
+          clinic_phone: 'Not specified',
+          emergency_contact: 'Not specified',
+          is_demo: false,
+        };
+      setPatient(nextPatient);
+      setTasks(SYNTHETIC_CARE_TASKS[newPatientId] || []);
+      setWorkflowState(null);
+      setActiveScenario('routine');
+      runSimulationScenario('routine', newPatientId);
+      fetchTimeline(newPatientId);
+    },
+    [runSimulationScenario, patientOptions, customPatientsMap, fetchTimeline]
+  );
+
+  // Initialize on mount
+  useEffect(() => {
+    runSimulationScenario('routine', selectedPatientId);
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Real-time task action state transition ('complete', 'snooze', 'miss')
+  const handleTaskAction = async (taskId: string, action: 'complete' | 'snooze' | 'miss') => {
+    // 1. Optimistic UI update
     setTasks((prev) =>
       prev.map((t) => {
         if (t.task_id === taskId) {
-          const nextStatus = t.status === 'COMPLETED' ? 'PENDING' : 'COMPLETED';
+          let nextStatus: CareTask['status'] = 'COMPLETED';
+          if (action === 'snooze') nextStatus = 'SNOOZED';
+          else if (action === 'miss') nextStatus = 'MISSED';
+          else if (t.status === 'COMPLETED') nextStatus = 'PENDING';
           return { ...t, status: nextStatus };
         }
         return t;
       })
     );
+
+    // 2. Call backend if online
+    try {
+      const res = await fetch(
+        `${API_BASE_URL}/api/v1/patients/${selectedPatientId}/tasks/${taskId}/${action}`,
+        {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
+          body: JSON.stringify({ notes: `Action '${action}' executed by patient via dashboard` }),
+        }
+      );
+      if (res.ok) {
+        const data = await res.json();
+        if (data.recovery_state?.active_tasks) {
+          setTasks(data.recovery_state.active_tasks);
+        }
+        fetchTimeline(selectedPatientId);
+      }
+    } catch {
+      // Local fallback event logging
+      const localEvent: RecoveryEvent = {
+        event_id: `evt_${Date.now().toString().slice(-6)}`,
+        run_id: `run_local_${Date.now().toString().slice(-4)}`,
+        patient_id: selectedPatientId,
+        event_type:
+          action === 'complete'
+            ? 'TASK_COMPLETED'
+            : action === 'snooze'
+            ? 'TASK_SNOOZED'
+            : 'TASK_MISSED',
+        task_id: taskId,
+        status: action.toUpperCase(),
+        value: `Task ${taskId} marked as ${action}`,
+        source: 'PATIENT',
+        timestamp: new Date().toISOString(),
+      };
+      setTimelineEvents((prev) => [localEvent, ...prev]);
+    }
+  };
+
+  // Human Clinical Review verification loop
+  const handleClinicalReview = async () => {
+    const ticketId =
+      workflowState?.escalation_ticket?.ticket_id || `TICK-${selectedPatientId}-REV`;
+    setReviewLoading(true);
+    setReviewSuccessMessage(null);
+    try {
+      const res = await fetch(`${API_BASE_URL}/api/v1/escalations/${ticketId}/review`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
+        body: JSON.stringify({
+          patient_id: selectedPatientId,
+          clinician_name: clinicianName,
+          action_notes: reviewNotes,
+        }),
+      });
+      if (res.ok) {
+        setReviewSuccessMessage(
+          `Clinical review completed by ${clinicianName}. Escalation marked RESOLVED.`
+        );
+        setWorkflowState((prev) => {
+          if (!prev) return prev;
+          return {
+            ...prev,
+            workflow_route: 'VERIFIED_AND_RESOLVED',
+            risk_assessment: prev.risk_assessment
+              ? {
+                  ...prev.risk_assessment,
+                  risk_level: 'MODERATE',
+                  clinical_reasoning: `Clinical Review Completed: ${reviewNotes} (Verified by ${clinicianName})`,
+                  care_team_action_required: false,
+                }
+              : null,
+            escalation_ticket: prev.escalation_ticket
+              ? {
+                  ...prev.escalation_ticket,
+                  status: 'RESOLVED',
+                  assigned_clinician: clinicianName,
+                  clinician_action_notes: reviewNotes,
+                }
+              : null,
+          };
+        });
+        fetchTimeline(selectedPatientId);
+      }
+    } catch {
+      // Local fallback
+      setReviewSuccessMessage(`Simulated verification completed by ${clinicianName}.`);
+      setWorkflowState((prev) => {
+        if (!prev) return prev;
+        return {
+          ...prev,
+          workflow_route: 'VERIFIED_AND_RESOLVED',
+          risk_assessment: prev.risk_assessment
+            ? {
+                ...prev.risk_assessment,
+                risk_level: 'MODERATE',
+                care_team_action_required: false,
+              }
+            : null,
+          escalation_ticket: prev.escalation_ticket
+            ? {
+                ...prev.escalation_ticket,
+                status: 'RESOLVED',
+                assigned_clinician: clinicianName,
+              }
+            : null,
+        };
+      });
+    } finally {
+      setReviewLoading(false);
+    }
+  };
+
+  // Upload unstructured discharge summary paperwork
+  const handleUploadDischarge = async () => {
+    if (!uploadText.trim()) {
+      setUploadError('Please paste clinical discharge paperwork text.');
+      return;
+    }
+    setUploadLoading(true);
+    setUploadError(null);
+    try {
+      const res = await fetch(`${API_BASE_URL}/api/v1/patients/upload-discharge`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
+        body: JSON.stringify({
+          filename: 'uploaded_discharge.txt',
+          content: uploadText,
+        }),
+      });
+      if (res.ok) {
+        const data = await res.json();
+        const newPatient: PatientBase = data.patient;
+        const newProfile: DischargeProfile = data.discharge_profile;
+        const newPlan = data.recovery_plan;
+        const newTasks: CareTask[] = data.recovery_state?.active_tasks || [];
+
+        const opt: PatientOption = {
+          id: newPatient.id,
+          name: `${newPatient.first_name} ${newPatient.last_name}`,
+          condition: newProfile.primary_diagnosis.split(' ')[0],
+          age: newPatient.age,
+          gender: newPatient.gender,
+        };
+        setPatientOptions((prev) => [opt, ...prev]);
+        setSelectedPatientId(newPatient.id);
+        setPatient(newPatient);
+        setTasks(newTasks);
+
+        setWorkflowState({
+          patient_id: newPatient.id,
+          patient_name: `${newPatient.first_name} ${newPatient.last_name}`,
+          primary_diagnosis: newProfile.primary_diagnosis,
+          discharge_profile: newProfile,
+          recovery_plan: newPlan,
+          workflow_route: 'INITIALIZED',
+          status: 'COMPLETED',
+          recovery_state: data.recovery_state,
+        });
+
+        setIsUploadModalOpen(false);
+        setUploadText('');
+        setCustomPatientsMap((prev) => ({ ...prev, [newPatient.id]: newPatient }));
+        setCustomProfilesMap((prev) => ({ ...prev, [newPatient.id]: newProfile }));
+        fetchTimeline(newPatient.id);
+      } else {
+        const err = await res.json();
+        setUploadError(err.detail || 'Failed to process discharge document.');
+      }
+    } catch {
+      setUploadError('Could not reach backend upload service.');
+    } finally {
+      setUploadLoading(false);
+    }
+  };
+
+  // File reader for discharge summary upload in modal (supports .pdf, .txt, .text)
+  const handleSummaryFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    setCreatePatientError(null);
+
+    const isPdf = file.name.toLowerCase().endsWith('.pdf') || file.type === 'application/pdf';
+
+    if (isPdf) {
+      try {
+        const buffer = await file.arrayBuffer();
+        let binary = '';
+        const bytes = new Uint8Array(buffer);
+        const len = bytes.byteLength;
+        for (let i = 0; i < len; i++) {
+          binary += String.fromCharCode(bytes[i]);
+        }
+        const base64Content = btoa(binary);
+
+        const res = await fetch(`${API_BASE_URL}/api/v1/documents/extract-text`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
+          body: JSON.stringify({
+            filename: file.name,
+            content_base64: base64Content,
+          }),
+        });
+
+        if (res.ok) {
+          const data = await res.json();
+          if (data.text && data.text.trim()) {
+            setNewPatientDischargeText(data.text);
+          } else {
+            setCreatePatientError(
+              'Unable to extract text from this PDF. Please upload a text-based PDF or TXT discharge summary.'
+            );
+          }
+        } else {
+          const err = await res.json().catch(() => ({}));
+          setCreatePatientError(
+            err.detail || 'Unable to extract text from this PDF. Please upload a text-based PDF or TXT discharge summary.'
+          );
+        }
+      } catch {
+        setCreatePatientError(
+          'Unable to extract text from this PDF. Please upload a text-based PDF or TXT discharge summary.'
+        );
+      }
+    } else {
+      const reader = new FileReader();
+      reader.onload = (event) => {
+        const text = event.target?.result;
+        if (typeof text === 'string') {
+          setNewPatientDischargeText(text);
+        }
+      };
+      reader.readAsText(file);
+    }
+  };
+
+  // File reader for unstructured paperwork modal (supports .pdf, .txt, .text)
+  const handlePaperworkFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    setUploadError(null);
+
+    const isPdf = file.name.toLowerCase().endsWith('.pdf') || file.type === 'application/pdf';
+
+    if (isPdf) {
+      try {
+        const buffer = await file.arrayBuffer();
+        let binary = '';
+        const bytes = new Uint8Array(buffer);
+        const len = bytes.byteLength;
+        for (let i = 0; i < len; i++) {
+          binary += String.fromCharCode(bytes[i]);
+        }
+        const base64Content = btoa(binary);
+
+        const res = await fetch(`${API_BASE_URL}/api/v1/documents/extract-text`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
+          body: JSON.stringify({
+            filename: file.name,
+            content_base64: base64Content,
+          }),
+        });
+
+        if (res.ok) {
+          const data = await res.json();
+          if (data.text && data.text.trim()) {
+            setUploadText(data.text);
+          } else {
+            setUploadError(
+              'Unable to extract text from this PDF. Please upload a text-based PDF or TXT discharge summary.'
+            );
+          }
+        } else {
+          const err = await res.json().catch(() => ({}));
+          setUploadError(
+            err.detail || 'Unable to extract text from this PDF. Please upload a text-based PDF or TXT discharge summary.'
+          );
+        }
+      } catch {
+        setUploadError(
+          'Unable to extract text from this PDF. Please upload a text-based PDF or TXT discharge summary.'
+        );
+      }
+    } else {
+      const reader = new FileReader();
+      reader.onload = (event) => {
+        const text = event.target?.result;
+        if (typeof text === 'string') {
+          setUploadText(text);
+        }
+      };
+      reader.readAsText(file);
+    }
+  };
+
+  // Dynamic Patient Creation Handler
+  const handleCreatePatient = async (withDischargeSummary: boolean) => {
+    if (!newPatientName.trim()) {
+      setCreatePatientError('Patient Full Name is required.');
+      return;
+    }
+
+    setCreatePatientLoading(true);
+    setCreatePatientError(null);
+
+    const payload: CreatePatientRequest = {
+      name: newPatientName.trim(),
+      age: newPatientAge ? parseInt(newPatientAge, 10) : undefined,
+      gender: newPatientGender || 'Not specified',
+      contact: newPatientContact.trim() || 'Not specified',
+      emergency_contact: newPatientEmergencyContact.trim() || 'Not specified',
+      discharge_date: newPatientDischargeDate.trim() || new Date().toISOString().split('T')[0],
+      primary_diagnosis: newPatientDiagnosis.trim() || 'General Post-Discharge Recovery',
+      condition_category: newPatientDiagnosis.trim() || 'General Post-Discharge Recovery',
+      procedure: newPatientProcedure.trim() || undefined,
+      physician_care_team: newPatientCareTeam.trim() || 'Not specified',
+      discharge_summary_text: withDischargeSummary && newPatientDischargeText.trim() ? newPatientDischargeText.trim() : undefined,
+    };
+
+    try {
+      const res = await fetch(`${API_BASE_URL}/api/v1/patients/create`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
+        body: JSON.stringify(payload),
+      });
+
+      if (res.ok) {
+        const data = await res.json();
+        const createdPatient: PatientBase = data.patient;
+        const createdProfile: DischargeProfile = data.discharge_profile;
+        const createdPlan = data.recovery_plan;
+        const createdTasks: CareTask[] = data.recovery_state?.active_tasks || [];
+
+        const newOpt: PatientOption = {
+          id: createdPatient.id,
+          name: `${createdPatient.first_name} ${createdPatient.last_name}`.trim(),
+          condition: createdProfile.primary_diagnosis.split(' ')[0],
+          age: createdPatient.age,
+          gender: createdPatient.gender,
+          is_demo: false,
+        };
+
+        setPatientOptions((prev) => {
+          const filtered = prev.filter((p) => p.id !== createdPatient.id);
+          return [...filtered, newOpt];
+        });
+
+        setCustomPatientsMap((prev) => ({ ...prev, [createdPatient.id]: createdPatient }));
+        setCustomProfilesMap((prev) => ({ ...prev, [createdPatient.id]: createdProfile }));
+
+        // Immediately select the newly created patient
+        setSelectedPatientId(createdPatient.id);
+        setPatient(createdPatient);
+        setTasks(createdTasks);
+        setWorkflowState({
+          patient_id: createdPatient.id,
+          patient_name: `${createdPatient.first_name} ${createdPatient.last_name}`.trim(),
+          primary_diagnosis: createdProfile.primary_diagnosis,
+          discharge_profile: createdProfile,
+          recovery_plan: createdPlan,
+          monitoring: data.monitoring,
+          workflow_route: 'INITIALIZED',
+          recovery_state: data.recovery_state,
+          status: 'COMPLETED',
+        });
+
+        setActiveScenario('routine');
+        setIsAddPatientModalOpen(false);
+
+        // Reset form inputs
+        setNewPatientName('');
+        setNewPatientAge('');
+        setNewPatientGender('Male');
+        setNewPatientContact('');
+        setNewPatientEmergencyContact('');
+        setNewPatientDischargeDate('');
+        setNewPatientDiagnosis('');
+        setNewPatientProcedure('');
+        setNewPatientCareTeam('');
+        setNewPatientDischargeText('');
+
+        fetchTimeline(createdPatient.id);
+      } else {
+        const err = await res.json().catch(() => ({}));
+        setCreatePatientError(err.detail || `Server error ${res.status}`);
+      }
+    } catch {
+      // Local fallback in offline mode
+      const fallbackId = `PT-USER-${Date.now().toString(16).slice(-6).toUpperCase()}`;
+      const nameParts = newPatientName.trim().split(' ');
+      const firstName = nameParts[0];
+      const lastName = nameParts.slice(1).join(' ') || 'Patient';
+      const fallbackPatient: PatientBase = {
+        id: fallbackId,
+        first_name: firstName,
+        last_name: lastName,
+        age: newPatientAge ? parseInt(newPatientAge, 10) : undefined,
+        gender: newPatientGender || 'Not specified',
+        discharge_date: newPatientDischargeDate.trim() || new Date().toISOString().split('T')[0],
+        condition_category: newPatientDiagnosis.trim() || 'Post-Discharge Recovery',
+        primary_care_physician: newPatientCareTeam.trim() || 'Not specified',
+        clinic_phone: newPatientContact.trim() || 'Not specified',
+        emergency_contact: newPatientEmergencyContact.trim() || 'Not specified',
+        is_demo: false,
+      };
+      const fallbackTasks: CareTask[] = [
+        {
+          task_id: `TASK-${fallbackId}-01`,
+          patient_id: fallbackId,
+          day_number: 2,
+          category: 'VITAL_CHECK',
+          title: 'Morning Resting Vitals & Temperature Check',
+          description: 'Measure and record morning resting temperature, pulse, and blood pressure.',
+          scheduled_time: '09:00',
+          status: 'PENDING',
+        },
+        {
+          task_id: `TASK-${fallbackId}-02`,
+          patient_id: fallbackId,
+          day_number: 2,
+          category: 'HYDRATION_DIET',
+          title: 'Hydration & Rest Protocol',
+          description: 'Maintain regular oral hydration and take scheduled rest periods.',
+          scheduled_time: '13:00',
+          status: 'PENDING',
+        },
+        {
+          task_id: `TASK-${fallbackId}-03`,
+          patient_id: fallbackId,
+          day_number: 2,
+          category: 'CHECK_IN',
+          title: 'Evening Recovery Status & Symptom Log',
+          description: 'Log evening recovery comfort and record any new symptoms or concerns.',
+          scheduled_time: '19:00',
+          status: 'PENDING',
+        },
+      ];
+      const fallbackOpt: PatientOption = {
+        id: fallbackId,
+        name: `${firstName} ${lastName}`.trim(),
+        condition: fallbackPatient.condition_category || 'Post-Discharge',
+        age: fallbackPatient.age,
+        gender: fallbackPatient.gender,
+        is_demo: false,
+      };
+      setPatientOptions((prev) => [...prev, fallbackOpt]);
+      setCustomPatientsMap((prev) => ({ ...prev, [fallbackId]: fallbackPatient }));
+      setSelectedPatientId(fallbackId);
+      setPatient(fallbackPatient);
+      setTasks(fallbackTasks);
+      setIsAddPatientModalOpen(false);
+    } finally {
+      setCreatePatientLoading(false);
+    }
+  };
+
+  // ── Login / Logout ────────────────────────────────────────────────────────
+  const DEMO_CREDENTIALS: Record<string, string> = {
+    'PT-CABG-001': 'CareBridge@123',
+    'PT-TKA-002': 'CareBridge@123',
+    'PT-CHF-003': 'CareBridge@123',
+    'PT-PNA-004': 'CareBridge@123',
+  };
+
+  const handleSignup = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setSignupLoading(true);
+    setSignupError(null);
+
+    if (!signupFullName.trim()) {
+      setSignupError('Full name is required');
+      setSignupLoading(false);
+      return;
+    }
+    if (!signupEmail.trim() || !signupEmail.includes('@')) {
+      setSignupError('A valid email address is required');
+      setSignupLoading(false);
+      return;
+    }
+    if (signupPassword.length < 8) {
+      setSignupError('Password must be at least 8 characters');
+      setSignupLoading(false);
+      return;
+    }
+    if (signupPassword !== signupConfirmPassword) {
+      setSignupError('Passwords do not match');
+      setSignupLoading(false);
+      return;
+    }
+
+    try {
+      const res = await fetch(`${API_BASE_URL}/api/v1/auth/signup`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
+        body: JSON.stringify({
+          full_name: signupFullName.trim(),
+          email: signupEmail.trim(),
+          password: signupPassword,
+          confirm_password: signupConfirmPassword,
+        }),
+      });
+
+      if (res.ok) {
+        const data = await res.json();
+        const token: string = data.session_token || '';
+        const name: string = data.patient_name || signupFullName.trim();
+        const pid: string = data.patient_id;
+
+        sessionStorage.setItem(
+          'carebridge_session',
+          JSON.stringify({ session_token: token, patient_id: pid, patient_name: name })
+        );
+        setAuthSessionToken(token);
+        setAuthPatientId(pid);
+        setAuthPatientName(name);
+        setSelectedPatientId(pid);
+        setIsAuthenticated(true);
+        await fetchPatientList();
+        setSignupLoading(false);
+        return;
+      } else {
+        const err = await res.json().catch(() => ({}));
+        setSignupError(err.detail || `Signup failed (HTTP ${res.status})`);
+        setSignupLoading(false);
+      }
+    } catch {
+      setSignupError('Signup requires a connected backend server. Please check your backend connection.');
+      setSignupLoading(false);
+    }
+  };
+
+  const handleLogin = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setLoginLoading(true);
+    setLoginError(null);
+
+    const isEmail = loginMode === 'email';
+    const payload = isEmail
+      ? { email: loginEmail.trim(), password: loginPassword }
+      : { patient_id: loginPatientId.trim(), password: loginPassword };
+
+    // 1. Try live backend authentication
+    try {
+      const res = await fetch(`${API_BASE_URL}/api/v1/auth/login`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
+        body: JSON.stringify(payload),
+      });
+      if (res.ok) {
+        const data = await res.json();
+        const token: string = data.session_token || '';
+        const name: string = data.patient_name || (isEmail ? loginEmail : loginPatientId);
+        const pid: string = data.patient_id || (isEmail ? 'PT-USER-AUTH' : loginPatientId);
+        sessionStorage.setItem(
+          'carebridge_session',
+          JSON.stringify({ session_token: token, patient_id: pid, patient_name: name })
+        );
+        setAuthSessionToken(token);
+        setAuthPatientId(pid);
+        setAuthPatientName(name);
+        setSelectedPatientId(pid);
+        setIsAuthenticated(true);
+        await fetchPatientList();
+        setLoginLoading(false);
+        return;
+      } else {
+        const err = await res.json().catch(() => ({}));
+        if (isEmail) {
+          setLoginError(err.detail || 'Invalid email or password.');
+          setLoginLoading(false);
+          return;
+        }
+        // Fall through to client-side check on 401/404 for demo accounts
+        if (res.status !== 401 && res.status !== 404) {
+          setLoginError(err.detail || `Login failed (HTTP ${res.status})`);
+          setLoginLoading(false);
+          return;
+        }
+      }
+    } catch {
+      if (isEmail) {
+        setLoginError('Email login requires a connected backend server. Switch to Demo Account to test offline.');
+        setLoginLoading(false);
+        return;
+      }
+      // Backend unreachable — fall through to client-side credential check for demo accounts
+    }
+
+    // 2. Client-side demo credential fallback (offline / backend down)
+    const expectedPw = DEMO_CREDENTIALS[loginPatientId.trim()];
+    if (!expectedPw) {
+      setLoginError(`Patient ID '${loginPatientId.trim()}' not found. Use a demo account or check your ID.`);
+      setLoginLoading(false);
+      return;
+    }
+    if (loginPassword !== expectedPw) {
+      setLoginError('Incorrect password. Demo password: CareBridge@123');
+      setLoginLoading(false);
+      return;
+    }
+
+    const offlineToken = `cb_offline_${Date.now().toString(16)}`;
+    const offlineName =
+      DEFAULT_PATIENT_OPTIONS.find((p) => p.id === loginPatientId.trim())?.name || loginPatientId.trim();
+
+    sessionStorage.setItem(
+      'carebridge_session',
+      JSON.stringify({
+        session_token: offlineToken,
+        patient_id: loginPatientId.trim(),
+        patient_name: offlineName,
+      })
+    );
+    setAuthSessionToken(offlineToken);
+    setAuthPatientId(loginPatientId.trim());
+    setAuthPatientName(offlineName);
+    setSelectedPatientId(loginPatientId.trim());
+    setIsAuthenticated(true);
+    setLoginLoading(false);
+  };
+
+  const handleLogout = async () => {
+    // Invalidate session on backend (best effort)
+    if (authSessionToken) {
+      try {
+        await fetch(`${API_BASE_URL}/api/v1/auth/logout`, {
+          method: 'POST',
+          headers: { Authorization: `Bearer ${authSessionToken}`, Accept: 'application/json' },
+        });
+      } catch {
+        // Ignore network errors on logout
+      }
+    }
+    sessionStorage.removeItem('carebridge_session');
+    setIsAuthenticated(false);
+    setAuthSessionToken('');
+    setAuthPatientId('');
+    setAuthPatientName('');
+    setWorkflowState(null);
+    setLoginPassword('CareBridge@123');
+    setLoginError(null);
+  };
+  // ── End Login / Logout ────────────────────────────────────────────────────
+
+  // Submit real-time live telemetry & evaluate through safety engine
+  const handleCustomSymptomSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (
+      !customSymptom.trim() &&
+      !customTemp &&
+      !customSysBP &&
+      !customHeartRate &&
+      !customSpo2 &&
+      !customWeightGain
+    ) {
+      setApiError('Please enter a symptom description or at least one vital sign reading.');
+      return;
+    }
+
+    setLoading(true);
+    setApiError(null);
+
+    const symptomReport: SymptomReport = {
+      patient_id: selectedPatientId,
+      symptom_description: customSymptom.trim() || 'Patient self-reported routine vitals log',
+      severity_score: Number(customSeverity) || 3,
+      measured_temp: customTemp ? parseFloat(customTemp) : undefined,
+      systolic_bp: customSysBP ? parseInt(customSysBP, 10) : undefined,
+      diastolic_bp: customDiaBP ? parseInt(customDiaBP, 10) : undefined,
+      heart_rate: customHeartRate ? parseInt(customHeartRate, 10) : undefined,
+      spo2: customSpo2 ? parseFloat(customSpo2) : undefined,
+      weight_gain_24h_lbs: customWeightGain ? parseFloat(customWeightGain) : undefined,
+    };
+
+    try {
+      const response = await fetch(`${API_BASE_URL}/api/v1/workflow/${selectedPatientId}`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
+        body: JSON.stringify(symptomReport),
+      });
+
+      if (response.ok) {
+        const data: WorkflowResult = await response.json();
+        setWorkflowState(data);
+        if (data.monitoring?.active_tasks && data.monitoring.active_tasks.length > 0) {
+          setTasks(data.monitoring.active_tasks);
+        }
+        setBackendOnline(true);
+        fetchTimeline(selectedPatientId);
+      } else {
+        setApiError(`Workflow evaluation returned HTTP ${response.status}`);
+      }
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : 'Network error';
+      setApiError(`Could not submit custom telemetry: ${message}`);
+    } finally {
+      setLoading(false);
+    }
   };
 
   // Compute adherence stats
   const completedTasksCount = tasks.filter((t) => t.status === 'COMPLETED').length;
-  const adherencePercent = Math.round((completedTasksCount / tasks.length) * 100);
+  const snoozedTasksCount = tasks.filter((t) => t.status === 'SNOOZED').length;
+  const missedTasksCount = tasks.filter((t) => t.status === 'MISSED').length;
+  const pendingTasksCount = tasks.filter(
+    (t) => t.status !== 'COMPLETED' && t.status !== 'SNOOZED' && t.status !== 'MISSED'
+  ).length;
+  const adherencePercent =
+    tasks.length > 0 ? Math.round((completedTasksCount / tasks.length) * 100) : 100;
 
   // Active risk level
   const activeRiskLevel: RiskLevel = workflowState?.risk_assessment?.risk_level || 'LOW';
+
+  // Dynamic milestones resolution: prefer live recovery_plan milestones, else synthetic patient milestones
+  const activeMilestones: Array<{ title: string; description: string }> = (() => {
+    // 1. Check if recovery_plan has a milestones array
+    const planMilestones = workflowState?.recovery_plan?.milestones;
+    if (Array.isArray(planMilestones) && planMilestones.length > 0) {
+      return planMilestones.slice(0, 3).map((m: unknown) => {
+        if (typeof m === 'string') {
+          return { title: 'Recovery Milestone', description: m };
+        }
+        if (m && typeof m === 'object') {
+          const obj = m as Record<string, unknown>;
+          return {
+            title: String(obj.title || (obj.day ? `Day ${obj.day} Milestone` : 'Recovery Milestone')),
+            description: String(obj.description || ''),
+          };
+        }
+        return { title: 'Recovery Milestone', description: String(m) };
+      });
+    }
+
+    // 2. Check if recovery_plan has phases with milestones
+    const phaseMilestones = workflowState?.recovery_plan?.phases?.[0]?.milestones;
+    if (Array.isArray(phaseMilestones) && phaseMilestones.length > 0) {
+      return phaseMilestones.slice(0, 3).map((m: unknown) => {
+        if (typeof m === 'string') {
+          return { title: 'Phase 1 Milestone', description: m };
+        }
+        if (m && typeof m === 'object') {
+          const obj = m as Record<string, unknown>;
+          return {
+            title: String(obj.title || 'Phase 1 Milestone'),
+            description: String(obj.description || ''),
+          };
+        }
+        return { title: 'Phase 1 Milestone', description: String(m) };
+      });
+    }
+
+    // 3. Fallback to patient-specific synthetic milestones
+    return SYNTHETIC_MILESTONES[selectedPatientId] || SYNTHETIC_MILESTONES['PT-CABG-001'];
+  })();
 
   // Badge styles based on risk level
   const getRiskBadgeStyles = (level: RiskLevel) => {
@@ -458,6 +1491,310 @@ export default function DashboardPage() {
 
   return (
     <div className="min-h-screen bg-slate-50 flex flex-col font-sans">
+      {/* ── Auth Gate ───────────────────────────────────────────────────── */}
+      {!authChecked ? (
+        <div className="flex-1 flex items-center justify-center min-h-screen bg-gradient-to-br from-slate-900 via-teal-950 to-slate-900">
+          <div className="flex flex-col items-center space-y-4">
+            <div className="w-12 h-12 rounded-xl bg-teal-600 flex items-center justify-center shadow-lg">
+              <Activity className="w-7 h-7 text-white animate-pulse" />
+            </div>
+            <p className="text-slate-300 text-sm font-medium">Initialising CareBridge AI…</p>
+          </div>
+        </div>
+      ) : !isAuthenticated ? (
+        /* ── LOGIN PAGE ─────────────────────────────────────────────────── */
+        <div className="flex-1 min-h-screen bg-gradient-to-br from-slate-900 via-teal-950 to-slate-900 flex flex-col items-center justify-center px-4 relative overflow-hidden">
+          {/* Background decorative glows */}
+          <div className="absolute top-[-80px] left-[-80px] w-[340px] h-[340px] rounded-full bg-teal-500/10 blur-3xl pointer-events-none" />
+          <div className="absolute bottom-[-60px] right-[-60px] w-[280px] h-[280px] rounded-full bg-cyan-500/10 blur-3xl pointer-events-none" />
+          {/* Top clinical safety banner */}
+          <div className="w-full max-w-md mb-6 flex items-center space-x-2 bg-amber-500/10 border border-amber-400/20 rounded-lg px-4 py-2.5">
+            <ShieldAlert className="w-4 h-4 text-amber-400 shrink-0" />
+            <p className="text-xs text-amber-200/80 font-mono leading-snug">
+              <strong className="text-amber-300">Clinical Decision-Support Prototype.</strong> AI agents cannot diagnose or prescribe.
+            </p>
+          </div>
+          {/* Login card */}
+          <div className="w-full max-w-md bg-white/5 backdrop-blur-xl border border-white/10 rounded-2xl shadow-2xl overflow-hidden">
+            {/* Card header */}
+            <div className="bg-gradient-to-r from-teal-600/80 to-cyan-600/80 px-7 py-6 flex items-center space-x-4">
+              <div className="w-11 h-11 rounded-xl bg-white/20 flex items-center justify-center shadow-inner">
+                <Activity className="w-6 h-6 text-white" />
+              </div>
+              <div>
+                <h1 className="text-xl font-bold text-white tracking-tight">CareBridge AI</h1>
+                <p className="text-teal-200 text-xs mt-0.5">Agentic Care Coordination · Patient Portal</p>
+              </div>
+            </div>
+            {!showSignup ? (
+              <form onSubmit={handleLogin} className="px-7 py-6 space-y-4">
+                <div className="flex items-center justify-between">
+                  <p className="text-slate-300 text-sm font-semibold">Sign In to Your Recovery Portal</p>
+                  <button
+                    type="button"
+                    onClick={() => { setShowSignup(true); setSignupError(null); }}
+                    className="text-xs text-teal-400 hover:text-teal-300 transition font-medium cursor-pointer"
+                  >
+                    Need an account?
+                  </button>
+                </div>
+
+                {/* Login Mode Toggle */}
+                <div className="grid grid-cols-2 gap-1.5 p-1 bg-white/5 border border-white/10 rounded-lg">
+                  <button
+                    type="button"
+                    onClick={() => { setLoginMode('demo'); setLoginError(null); }}
+                    className={`py-1.5 text-xs font-semibold rounded transition cursor-pointer ${
+                      loginMode === 'demo'
+                        ? 'bg-teal-500 text-white shadow-sm'
+                        : 'text-slate-400 hover:text-white'
+                    }`}
+                  >
+                    Demo Patient
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => { setLoginMode('email'); setLoginError(null); }}
+                    className={`py-1.5 text-xs font-semibold rounded transition cursor-pointer ${
+                      loginMode === 'email'
+                        ? 'bg-teal-500 text-white shadow-sm'
+                        : 'text-slate-400 hover:text-white'
+                    }`}
+                  >
+                    Email Account
+                  </button>
+                </div>
+
+                {loginMode === 'demo' ? (
+                  /* Patient ID selector */
+                  <div>
+                    <label htmlFor="login-patient-id" className="block text-xs font-semibold text-slate-400 mb-1.5 uppercase tracking-wide">Patient ID</label>
+                    <div className="relative">
+                      <User className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
+                      <select
+                        id="login-patient-id"
+                        value={loginPatientId}
+                        onChange={(e) => { setLoginPatientId(e.target.value); setLoginError(null); }}
+                        className="w-full pl-9 pr-4 py-2.5 border border-white/15 text-white rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-teal-400/60 transition appearance-none cursor-pointer"
+                        style={{ backgroundColor: 'rgba(255,255,255,0.06)' }}
+                      >
+                        <option value="PT-CABG-001" style={{ background: '#1e293b' }}>PT-CABG-001 — James Harrison (Cardiac)</option>
+                        <option value="PT-TKA-002" style={{ background: '#1e293b' }}>PT-TKA-002 — Elena Rostova (Knee)</option>
+                        <option value="PT-CHF-003" style={{ background: '#1e293b' }}>PT-CHF-003 — Marcus Vance (Heart Failure)</option>
+                        <option value="PT-PNA-004" style={{ background: '#1e293b' }}>PT-PNA-004 — Sarah Chen (Pneumonia)</option>
+                      </select>
+                    </div>
+                  </div>
+                ) : (
+                  /* Email input */
+                  <div>
+                    <label htmlFor="login-email" className="block text-xs font-semibold text-slate-400 mb-1.5 uppercase tracking-wide">Email Address</label>
+                    <div className="relative">
+                      <Mail className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
+                      <input
+                        id="login-email"
+                        type="email"
+                        value={loginEmail}
+                        onChange={(e) => { setLoginEmail(e.target.value); setLoginError(null); }}
+                        placeholder="patient@example.com"
+                        autoComplete="email"
+                        required
+                        className="w-full pl-9 pr-4 py-2.5 border border-white/15 text-white placeholder-slate-500 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-teal-400/60 transition"
+                        style={{ backgroundColor: 'rgba(255,255,255,0.06)' }}
+                      />
+                    </div>
+                  </div>
+                )}
+
+                {/* Password */}
+                <div>
+                  <label htmlFor="login-password" className="block text-xs font-semibold text-slate-400 mb-1.5 uppercase tracking-wide">Password</label>
+                  <div className="relative">
+                    <Lock className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
+                    <input
+                      id="login-password"
+                      type="password"
+                      value={loginPassword}
+                      onChange={(e) => { setLoginPassword(e.target.value); setLoginError(null); }}
+                      placeholder="Enter password"
+                      autoComplete="current-password"
+                      className="w-full pl-9 pr-4 py-2.5 border border-white/15 text-white placeholder-slate-500 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-teal-400/60 transition"
+                      style={{ backgroundColor: 'rgba(255,255,255,0.06)' }}
+                    />
+                  </div>
+                </div>
+
+                {/* Error */}
+                {loginError && (
+                  <div className="flex items-start space-x-2 bg-rose-500/10 border border-rose-400/30 rounded-lg px-3.5 py-2.5">
+                    <AlertCircle className="w-4 h-4 text-rose-400 shrink-0 mt-0.5" />
+                    <p className="text-xs text-rose-300 leading-snug">{loginError}</p>
+                  </div>
+                )}
+
+                {/* Submit */}
+                <button
+                  id="login-submit-btn"
+                  type="submit"
+                  disabled={loginLoading}
+                  className="w-full flex items-center justify-center space-x-2 py-2.5 bg-teal-500 hover:bg-teal-400 disabled:opacity-60 text-white font-semibold rounded-lg text-sm transition-colors shadow-lg cursor-pointer"
+                >
+                  {loginLoading ? (
+                    <><RefreshCw className="w-4 h-4 animate-spin" /><span>Authenticating…</span></>
+                  ) : (
+                    <><LogOut className="w-4 h-4 rotate-180" /><span>Sign In</span></>
+                  )}
+                </button>
+
+                {/* Demo hint / signup link */}
+                {loginMode === 'demo' ? (
+                  <div className="bg-teal-500/8 border border-teal-400/20 rounded-lg px-4 py-2.5">
+                    <p className="text-xs text-teal-300 font-semibold mb-0.5">🔑 Demo Password (all accounts)</p>
+                    <p className="font-mono text-teal-200 text-xs tracking-wider">CareBridge@123</p>
+                  </div>
+                ) : (
+                  <div className="text-center pt-1">
+                    <button
+                      type="button"
+                      onClick={() => { setShowSignup(true); setSignupError(null); }}
+                      className="text-xs text-slate-400 hover:text-teal-300 transition cursor-pointer"
+                    >
+                      New patient? <span className="text-teal-400 font-semibold underline underline-offset-2">Create an account</span>
+                    </button>
+                  </div>
+                )}
+              </form>
+            ) : (
+              /* SIGN UP FORM */
+              <form onSubmit={handleSignup} className="px-7 py-6 space-y-3.5">
+                <div className="flex items-center justify-between">
+                  <p className="text-slate-300 text-sm font-semibold">Create Patient Account</p>
+                  <button
+                    type="button"
+                    onClick={() => { setShowSignup(false); setLoginError(null); }}
+                    className="text-xs text-teal-400 hover:text-teal-300 transition font-medium cursor-pointer"
+                  >
+                    Back to Sign In
+                  </button>
+                </div>
+
+                {/* Full Name */}
+                <div>
+                  <label htmlFor="signup-name" className="block text-xs font-semibold text-slate-400 mb-1 uppercase tracking-wide">Full Name</label>
+                  <div className="relative">
+                    <User className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
+                    <input
+                      id="signup-name"
+                      type="text"
+                      value={signupFullName}
+                      onChange={(e) => { setSignupFullName(e.target.value); setSignupError(null); }}
+                      placeholder="e.g. Eleanor Vance"
+                      required
+                      className="w-full pl-9 pr-4 py-2 border border-white/15 text-white placeholder-slate-500 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-teal-400/60 transition"
+                      style={{ backgroundColor: 'rgba(255,255,255,0.06)' }}
+                    />
+                  </div>
+                </div>
+
+                {/* Email */}
+                <div>
+                  <label htmlFor="signup-email" className="block text-xs font-semibold text-slate-400 mb-1 uppercase tracking-wide">Email Address</label>
+                  <div className="relative">
+                    <Mail className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
+                    <input
+                      id="signup-email"
+                      type="email"
+                      value={signupEmail}
+                      onChange={(e) => { setSignupEmail(e.target.value); setSignupError(null); }}
+                      placeholder="e.g. eleanor@example.com"
+                      required
+                      className="w-full pl-9 pr-4 py-2 border border-white/15 text-white placeholder-slate-500 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-teal-400/60 transition"
+                      style={{ backgroundColor: 'rgba(255,255,255,0.06)' }}
+                    />
+                  </div>
+                </div>
+
+                {/* Password */}
+                <div>
+                  <label htmlFor="signup-password" className="block text-xs font-semibold text-slate-400 mb-1 uppercase tracking-wide">Password</label>
+                  <div className="relative">
+                    <Lock className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
+                    <input
+                      id="signup-password"
+                      type="password"
+                      value={signupPassword}
+                      onChange={(e) => { setSignupPassword(e.target.value); setSignupError(null); }}
+                      placeholder="Minimum 8 characters"
+                      required
+                      autoComplete="new-password"
+                      className="w-full pl-9 pr-4 py-2 border border-white/15 text-white placeholder-slate-500 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-teal-400/60 transition"
+                      style={{ backgroundColor: 'rgba(255,255,255,0.06)' }}
+                    />
+                  </div>
+                </div>
+
+                {/* Confirm Password */}
+                <div>
+                  <label htmlFor="signup-confirm-password" className="block text-xs font-semibold text-slate-400 mb-1 uppercase tracking-wide">Confirm Password</label>
+                  <div className="relative">
+                    <Lock className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
+                    <input
+                      id="signup-confirm-password"
+                      type="password"
+                      value={signupConfirmPassword}
+                      onChange={(e) => { setSignupConfirmPassword(e.target.value); setSignupError(null); }}
+                      placeholder="Repeat password"
+                      required
+                      autoComplete="new-password"
+                      className="w-full pl-9 pr-4 py-2 border border-white/15 text-white placeholder-slate-500 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-teal-400/60 transition"
+                      style={{ backgroundColor: 'rgba(255,255,255,0.06)' }}
+                    />
+                  </div>
+                </div>
+
+                {/* Error */}
+                {signupError && (
+                  <div className="flex items-start space-x-2 bg-rose-500/10 border border-rose-400/30 rounded-lg px-3.5 py-2">
+                    <AlertCircle className="w-4 h-4 text-rose-400 shrink-0 mt-0.5" />
+                    <p className="text-xs text-rose-300 leading-snug">{signupError}</p>
+                  </div>
+                )}
+
+                {/* Submit */}
+                <button
+                  id="signup-submit-btn"
+                  type="submit"
+                  disabled={signupLoading}
+                  className="w-full flex items-center justify-center space-x-2 py-2.5 bg-teal-500 hover:bg-teal-400 disabled:opacity-60 text-white font-semibold rounded-lg text-sm transition-colors shadow-lg cursor-pointer"
+                >
+                  {signupLoading ? (
+                    <><RefreshCw className="w-4 h-4 animate-spin" /><span>Registering…</span></>
+                  ) : (
+                    <><UserPlus className="w-4 h-4" /><span>Create Account</span></>
+                  )}
+                </button>
+
+                <div className="text-center pt-0.5">
+                  <button
+                    type="button"
+                    onClick={() => { setShowSignup(false); setLoginError(null); }}
+                    className="text-xs text-slate-400 hover:text-teal-300 transition cursor-pointer"
+                  >
+                    Already registered? <span className="text-teal-400 font-semibold underline underline-offset-2">Sign In</span>
+                  </button>
+                </div>
+              </form>
+            )}
+            <div className="px-7 pb-5 text-center">
+              <p className="text-[11px] text-slate-500 leading-relaxed">
+                CareBridge AI is a <strong className="text-slate-400">clinical decision-support prototype</strong> and does not replace professional clinical care.
+              </p>
+            </div>
+          </div>
+        </div>
+      ) : (
+      /* ── AUTHENTICATED DASHBOARD ─────────────────────────────────────── */
+      <div className="min-h-screen bg-slate-50 flex flex-col font-sans">
       {/* 0. Top Mandatory Clinical Guardrail Banner */}
       <div className="bg-slate-900 text-slate-100 text-xs px-4 py-2 border-b border-slate-800 flex items-center justify-between">
         <div className="flex items-center space-x-2 max-w-5xl">
@@ -493,7 +1830,31 @@ export default function DashboardPage() {
           </div>
 
           {/* Patient Selector & Backend Status */}
-          <div className="flex items-center space-x-4">
+          <div className="flex items-center space-x-3">
+            {/* [ + Add New Patient ] Button */}
+            <button
+              type="button"
+              onClick={() => setIsAddPatientModalOpen(true)}
+              className="flex items-center space-x-1.5 px-3 py-1.5 bg-teal-600 hover:bg-teal-700 text-white rounded-lg text-xs font-semibold transition-colors shadow-xs cursor-pointer"
+              title="Onboard a new real or de-identified patient"
+            >
+              <UserPlus className="w-3.5 h-3.5" />
+              <span className="hidden sm:inline">Add New Patient</span>
+              <span className="sm:hidden">+ Patient</span>
+            </button>
+
+            {/* Upload Discharge Summary Button */}
+            <button
+              type="button"
+              onClick={() => setIsUploadModalOpen(true)}
+              className="flex items-center space-x-1.5 px-3 py-1.5 bg-teal-50 text-teal-700 hover:bg-teal-100 border border-teal-200 rounded-lg text-xs font-semibold transition-colors shadow-xs"
+              title="Upload raw clinical discharge paperwork to synthesize care plan and tasks"
+            >
+              <Upload className="w-3.5 h-3.5 text-teal-600" />
+              <span className="hidden sm:inline">Upload Paperwork</span>
+              <span className="sm:hidden">Upload</span>
+            </button>
+
             {/* Patient Selector */}
             <div className="flex items-center space-x-2 bg-slate-50 px-3 py-1.5 rounded-lg border border-slate-200">
               <User className="w-4 h-4 text-slate-500" />
@@ -503,14 +1864,29 @@ export default function DashboardPage() {
               <select
                 id="patient-select"
                 value={selectedPatientId}
-                onChange={(e) => setSelectedPatientId(e.target.value)}
-                className="text-xs font-semibold text-slate-800 bg-transparent border-none focus:outline-none focus:ring-0 cursor-pointer"
+                onChange={(e) => handleSelectPatient(e.target.value)}
+                className="text-xs font-semibold text-slate-800 bg-transparent border-none focus:outline-none focus:ring-0 cursor-pointer max-w-[140px] sm:max-w-[200px] truncate"
               >
-                {PATIENT_OPTIONS.map((p) => (
-                  <option key={p.id} value={p.id}>
-                    {p.name} ({p.id}) — {p.condition.split(' ')[0]}
-                  </option>
-                ))}
+                <optgroup label="DEMO PATIENTS">
+                  {patientOptions
+                    .filter((p) => p.is_demo !== false)
+                    .map((p) => (
+                      <option key={p.id} value={p.id}>
+                        {p.name} ({p.id}) — {p.condition.split(' ')[0]}
+                      </option>
+                    ))}
+                </optgroup>
+                {patientOptions.some((p) => p.is_demo === false) && (
+                  <optgroup label="USER PATIENTS">
+                    {patientOptions
+                      .filter((p) => p.is_demo === false)
+                      .map((p) => (
+                        <option key={p.id} value={p.id}>
+                          {p.name} ({p.id}) — {p.condition.split(' ')[0]}
+                        </option>
+                      ))}
+                  </optgroup>
+                )}
               </select>
             </div>
 
@@ -539,9 +1915,413 @@ export default function DashboardPage() {
                 </div>
               )}
             </div>
+
+            {/* Logged-in patient badge + Logout */}
+            {isAuthenticated && (
+              <div className="flex items-center space-x-2">
+                <div className="hidden sm:flex items-center space-x-1.5 px-2.5 py-1 bg-teal-50 text-teal-700 border border-teal-200 rounded-full text-xs font-medium">
+                  <User className="w-3.5 h-3.5 text-teal-600" />
+                  <span className="max-w-[120px] truncate">{authPatientName}</span>
+                </div>
+                <button
+                  id="logout-btn"
+                  type="button"
+                  onClick={handleLogout}
+                  className="flex items-center space-x-1 px-2.5 py-1 bg-slate-100 hover:bg-rose-50 text-slate-600 hover:text-rose-700 border border-slate-200 hover:border-rose-200 rounded-full text-xs font-medium transition-colors cursor-pointer"
+                  title="Sign out of CareBridge AI"
+                >
+                  <LogOut className="w-3.5 h-3.5" />
+                  <span>Sign Out</span>
+                </button>
+              </div>
+            )}
           </div>
         </div>
       </header>
+
+      {/* Upload Paperwork Modal */}
+      {isUploadModalOpen && (
+        <div className="fixed inset-0 bg-slate-900/50 backdrop-blur-xs z-50 flex items-center justify-center p-4">
+          <div className="bg-white rounded-xl max-w-2xl w-full border border-slate-200 shadow-xl overflow-hidden animate-in fade-in zoom-in-95 duration-150">
+            <div className="flex items-center justify-between px-5 py-4 border-b border-slate-100 bg-slate-50">
+              <div className="flex items-center space-x-2">
+                <div className="p-1.5 bg-teal-100 text-teal-700 rounded-lg">
+                  <FileUp className="w-4 h-4" />
+                </div>
+                <div>
+                  <h3 className="text-sm font-bold text-slate-900">Upload Clinical Discharge Paperwork</h3>
+                  <p className="text-[11px] text-slate-500">Ingest unstructured EHR summary into structured RecoveryState</p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setIsUploadModalOpen(false)}
+                className="text-slate-400 hover:text-slate-600 p-1 rounded"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            <div className="p-5 space-y-4">
+              {/* Safety notice banner */}
+              <div className="p-3 bg-teal-50 border border-teal-200 rounded-lg text-xs text-teal-900 flex items-start space-x-2">
+                <ShieldCheck className="w-4 h-4 text-teal-600 shrink-0 mt-0.5" />
+                <p className="leading-relaxed">
+                  <strong>Clinical Guardrail Guarantee:</strong> CareBridge AI structures patient instructions and Day 2 recovery tasks without hallucination. It will not diagnose medical conditions or alter prescribed regimens.
+                </p>
+              </div>
+
+              {/* Template quick-load button */}
+              <div className="flex items-center justify-between text-xs">
+                <span className="text-slate-600 font-medium">Unstructured Summary Text:</span>
+                <div className="flex items-center space-x-2">
+                  <label className="text-teal-700 hover:text-teal-800 font-semibold underline text-[11px] cursor-pointer">
+                    <span>Upload File (.pdf, .txt)</span>
+                    <input
+                      type="file"
+                      accept=".pdf,.txt,.text,application/pdf,text/plain"
+                      onChange={handlePaperworkFileUpload}
+                      className="sr-only"
+                    />
+                  </label>
+                  <span className="text-slate-300">•</span>
+                  <button
+                    type="button"
+                    onClick={() => setUploadText(SAMPLE_DISCHARGE_TEXT)}
+                    className="text-teal-700 hover:text-teal-800 font-semibold underline text-[11px]"
+                  >
+                    Load Sample Appendectomy Summary
+                  </button>
+                </div>
+              </div>
+
+              <textarea
+                rows={9}
+                value={uploadText}
+                onChange={(e) => setUploadText(e.target.value)}
+                placeholder="Paste discharge summary text here (including diagnosis, medications, precautions, red flags)..."
+                className="w-full text-xs font-mono p-3 rounded-lg border border-slate-200 focus:outline-none focus:ring-1 focus:ring-teal-500 text-slate-800 bg-slate-50/50 resize-none"
+              />
+
+              {uploadError && (
+                <div className="p-2 bg-rose-50 border border-rose-200 text-rose-700 rounded text-xs">
+                  {uploadError}
+                </div>
+              )}
+            </div>
+
+            <div className="px-5 py-3.5 bg-slate-50 border-t border-slate-100 flex items-center justify-end space-x-3">
+              <button
+                type="button"
+                onClick={() => setIsUploadModalOpen(false)}
+                className="px-3.5 py-1.5 rounded-lg text-xs font-semibold text-slate-600 hover:bg-slate-100"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={handleUploadDischarge}
+                disabled={uploadLoading || !uploadText.trim()}
+                className="px-4 py-1.5 rounded-lg text-xs font-semibold bg-teal-600 hover:bg-teal-700 text-white flex items-center space-x-1.5 disabled:opacity-50 shadow-sm"
+              >
+                {uploadLoading ? (
+                  <>
+                    <RefreshCw className="w-3.5 h-3.5 animate-spin" />
+                    <span>Synthesizing Plan...</span>
+                  </>
+                ) : (
+                  <>
+                    <FileCheck2 className="w-3.5 h-3.5" />
+                    <span>Ingest &amp; Generate Recovery Plan</span>
+                  </>
+                )}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Add New Patient Modal */}
+      {isAddPatientModalOpen && (
+        <div className="fixed inset-0 bg-slate-900/50 backdrop-blur-xs z-50 flex items-center justify-center p-4 overflow-y-auto">
+          <div className="bg-white rounded-xl max-w-2xl w-full border border-slate-200 shadow-xl overflow-hidden my-8 max-h-[92vh] flex flex-col animate-in fade-in zoom-in-95 duration-150">
+            {/* Modal Header */}
+            <div className="flex items-center justify-between px-5 py-4 border-b border-slate-100 bg-slate-50 shrink-0">
+              <div className="flex items-center space-x-2">
+                <div className="p-1.5 bg-teal-100 text-teal-700 rounded-lg">
+                  <UserPlus className="w-4 h-4" />
+                </div>
+                <div>
+                  <h3 className="text-sm font-bold text-slate-900">Add New Patient — Dynamic Onboarding</h3>
+                  <p className="text-[11px] text-slate-500">Create real or authorized patient record with isolated recovery state</p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setIsAddPatientModalOpen(false)}
+                className="text-slate-400 hover:text-slate-600 p-1 rounded cursor-pointer"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            {/* Scrollable Form Body */}
+            <div className="p-5 space-y-4 overflow-y-auto flex-1">
+              {/* Mandatory Privacy & Clinical Notice */}
+              <div className="p-3 bg-amber-50 border border-amber-200 rounded-lg text-xs text-amber-900 flex items-start space-x-2.5">
+                <ShieldAlert className="w-4 h-4 text-amber-600 shrink-0 mt-0.5" />
+                <div className="leading-relaxed">
+                  <p className="font-semibold text-amber-950">
+                    Use authorized or de-identified patient information for this demonstration.
+                  </p>
+                  <p className="text-[11px] text-amber-800 mt-0.5">
+                    CareBridge AI maintains strict patient isolation in this prototype session. Do not input unnecessary sensitive personal health identifiers.
+                  </p>
+                </div>
+              </div>
+
+              {/* Patient Basic Information */}
+              <div className="space-y-3">
+                <h4 className="text-xs font-bold text-slate-900 uppercase tracking-wider flex items-center space-x-1.5">
+                  <User className="w-3.5 h-3.5 text-slate-500" />
+                  <span>Patient Identity &amp; Demographics</span>
+                </h4>
+
+                {/* Patient Name (Required) */}
+                <div>
+                  <label className="block text-xs font-semibold text-slate-700 mb-1">
+                    Patient Full Name <span className="text-rose-500">*</span>
+                  </label>
+                  <input
+                    type="text"
+                    required
+                    value={newPatientName}
+                    onChange={(e) => setNewPatientName(e.target.value)}
+                    placeholder="e.g. Ravi Kumar"
+                    className="w-full text-xs p-2.5 rounded-lg border border-slate-200 focus:outline-none focus:ring-1 focus:ring-teal-500 text-slate-900 bg-white"
+                  />
+                </div>
+
+                {/* 2-column demographics grid */}
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  <div>
+                    <label className="block text-xs font-medium text-slate-600 mb-1">Age (Years)</label>
+                    <input
+                      type="number"
+                      min="1"
+                      max="120"
+                      value={newPatientAge}
+                      onChange={(e) => setNewPatientAge(e.target.value)}
+                      placeholder="e.g. 62"
+                      className="w-full text-xs p-2.5 rounded-lg border border-slate-200 focus:outline-none focus:ring-1 focus:ring-teal-500 text-slate-900 bg-white"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block text-xs font-medium text-slate-600 mb-1">Sex / Gender</label>
+                    <select
+                      value={newPatientGender}
+                      onChange={(e) => setNewPatientGender(e.target.value)}
+                      className="w-full text-xs p-2.5 rounded-lg border border-slate-200 focus:outline-none focus:ring-1 focus:ring-teal-500 text-slate-900 bg-white"
+                    >
+                      <option value="Male">Male</option>
+                      <option value="Female">Female</option>
+                      <option value="Other">Other</option>
+                      <option value="Not specified">Not specified</option>
+                    </select>
+                  </div>
+                </div>
+
+                {/* Contact numbers */}
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  <div>
+                    <label className="block text-xs font-medium text-slate-600 mb-1">Patient / Caregiver Contact</label>
+                    <input
+                      type="text"
+                      value={newPatientContact}
+                      onChange={(e) => setNewPatientContact(e.target.value)}
+                      placeholder="e.g. 555-0144 or Not specified"
+                      className="w-full text-xs p-2.5 rounded-lg border border-slate-200 focus:outline-none focus:ring-1 focus:ring-teal-500 text-slate-900 bg-white"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block text-xs font-medium text-slate-600 mb-1">Emergency Contact</label>
+                    <input
+                      type="text"
+                      value={newPatientEmergencyContact}
+                      onChange={(e) => setNewPatientEmergencyContact(e.target.value)}
+                      placeholder="e.g. Spouse / Family - 555-0199"
+                      className="w-full text-xs p-2.5 rounded-lg border border-slate-200 focus:outline-none focus:ring-1 focus:ring-teal-500 text-slate-900 bg-white"
+                    />
+                  </div>
+                </div>
+              </div>
+
+              {/* Clinical & Discharge Context */}
+              <div className="space-y-3 pt-2 border-t border-slate-100">
+                <h4 className="text-xs font-bold text-slate-900 uppercase tracking-wider flex items-center space-x-1.5">
+                  <Stethoscope className="w-3.5 h-3.5 text-slate-500" />
+                  <span>Clinical Discharge Context (Optional)</span>
+                </h4>
+
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  <div>
+                    <label className="block text-xs font-medium text-slate-600 mb-1">Discharge Date</label>
+                    <input
+                      type="date"
+                      value={newPatientDischargeDate}
+                      onChange={(e) => setNewPatientDischargeDate(e.target.value)}
+                      className="w-full text-xs p-2.5 rounded-lg border border-slate-200 focus:outline-none focus:ring-1 focus:ring-teal-500 text-slate-900 bg-white"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block text-xs font-medium text-slate-600 mb-1">Attending Physician / Care Team</label>
+                    <input
+                      type="text"
+                      value={newPatientCareTeam}
+                      onChange={(e) => setNewPatientCareTeam(e.target.value)}
+                      placeholder="e.g. Dr. Angela Thorne, MD (Orthopedics)"
+                      className="w-full text-xs p-2.5 rounded-lg border border-slate-200 focus:outline-none focus:ring-1 focus:ring-teal-500 text-slate-900 bg-white"
+                    />
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  <div>
+                    <label className="block text-xs font-medium text-slate-600 mb-1">Primary Diagnosis</label>
+                    <input
+                      type="text"
+                      value={newPatientDiagnosis}
+                      onChange={(e) => setNewPatientDiagnosis(e.target.value)}
+                      placeholder="e.g. Total Knee Replacement Recovery"
+                      className="w-full text-xs p-2.5 rounded-lg border border-slate-200 focus:outline-none focus:ring-1 focus:ring-teal-500 text-slate-900 bg-white"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block text-xs font-medium text-slate-600 mb-1">Procedure</label>
+                    <input
+                      type="text"
+                      value={newPatientProcedure}
+                      onChange={(e) => setNewPatientProcedure(e.target.value)}
+                      placeholder="e.g. Right Total Knee Arthroplasty"
+                      className="w-full text-xs p-2.5 rounded-lg border border-slate-200 focus:outline-none focus:ring-1 focus:ring-teal-500 text-slate-900 bg-white"
+                    />
+                  </div>
+                </div>
+              </div>
+
+              {/* Optional Discharge Summary Upload Section */}
+              <div className="space-y-3 pt-2 border-t border-slate-100">
+                <div className="flex items-center justify-between">
+                  <h4 className="text-xs font-bold text-slate-900 uppercase tracking-wider flex items-center space-x-1.5">
+                    <FileText className="w-3.5 h-3.5 text-slate-500" />
+                    <span>Discharge Summary Document (Optional)</span>
+                  </h4>
+                  <div className="flex items-center space-x-2">
+                    <label className="text-teal-700 hover:text-teal-800 font-semibold underline text-[11px] cursor-pointer">
+                      <span>Upload File (.pdf, .txt)</span>
+                      <input
+                        type="file"
+                        accept=".pdf,.txt,.text,application/pdf,text/plain"
+                        onChange={handleSummaryFileUpload}
+                        className="sr-only"
+                      />
+                    </label>
+                    <span className="text-slate-300">•</span>
+                    <button
+                      type="button"
+                      onClick={() =>
+                        setNewPatientDischargeText(
+                          `DISCHARGE SUMMARY\nPatient: ${newPatientName || 'Ravi Kumar'}\nAge: ${newPatientAge || '62'}\nGender: ${newPatientGender || 'Male'}\nPrimary Diagnosis: ${newPatientDiagnosis || 'Total Knee Arthroplasty'}\nAttending: ${newPatientCareTeam || 'Dr. Angela Thorne, MD'}\nDischarge Medications:\n- Acetaminophen 650mg PO Q6H PRN pain\n- Enoxaparin 40mg SubQ daily x 10 days\nActivity: Weight-bearing as tolerated with walker. Ankle pumps TID.\nRed Flags: Fever >= 101.5 F, sudden calf swelling or redness.`
+                        )
+                      }
+                      className="text-teal-700 hover:text-teal-800 font-semibold underline text-[11px] cursor-pointer"
+                    >
+                      Fill Sample Knee Summary
+                    </button>
+                  </div>
+                </div>
+
+                <p className="text-[11px] text-slate-500">
+                  If uploaded, the <strong>Discharge Understanding</strong> &amp; <strong>Recovery Planning</strong> agents will parse medications, restrictions, and milestones. If omitted, safe generic tracking tasks are initialized without fabricating medications.
+                </p>
+
+                <textarea
+                  rows={4}
+                  value={newPatientDischargeText}
+                  onChange={(e) => setNewPatientDischargeText(e.target.value)}
+                  placeholder="Optional: Paste clinical discharge summary text here..."
+                  className="w-full text-xs font-mono p-3 rounded-lg border border-slate-200 focus:outline-none focus:ring-1 focus:ring-teal-500 text-slate-800 bg-slate-50/50 resize-none"
+                />
+              </div>
+
+              {/* Error Alert */}
+              {createPatientError && (
+                <div className="p-2.5 bg-rose-50 border border-rose-200 text-rose-700 rounded-lg text-xs flex items-center space-x-2">
+                  <AlertCircle className="w-4 h-4 shrink-0 text-rose-600" />
+                  <span>{createPatientError}</span>
+                </div>
+              )}
+            </div>
+
+            {/* Modal Footer with Dual Actions */}
+            <div className="px-5 py-3.5 bg-slate-50 border-t border-slate-100 flex flex-wrap items-center justify-end gap-2.5 shrink-0">
+              <button
+                type="button"
+                onClick={() => setIsAddPatientModalOpen(false)}
+                className="px-3.5 py-1.5 rounded-lg text-xs font-semibold text-slate-600 hover:bg-slate-100 cursor-pointer"
+              >
+                Cancel
+              </button>
+
+              {/* Button A: Create Patient (basic info) */}
+              <button
+                type="button"
+                onClick={() => handleCreatePatient(false)}
+                disabled={createPatientLoading || !newPatientName.trim()}
+                className="px-3.5 py-1.5 rounded-lg text-xs font-semibold bg-slate-800 hover:bg-slate-900 text-white flex items-center space-x-1.5 disabled:opacity-50 shadow-xs cursor-pointer"
+                title="Create patient profile with safe generic tracking tasks"
+              >
+                {createPatientLoading ? (
+                  <>
+                    <RefreshCw className="w-3.5 h-3.5 animate-spin" />
+                    <span>Creating...</span>
+                  </>
+                ) : (
+                  <>
+                    <Check className="w-3.5 h-3.5" />
+                    <span>Create Patient</span>
+                  </>
+                )}
+              </button>
+
+              {/* Button B: Create Patient + Upload Discharge Summary */}
+              <button
+                type="button"
+                onClick={() => handleCreatePatient(true)}
+                disabled={createPatientLoading || !newPatientName.trim() || !newPatientDischargeText.trim()}
+                className="px-4 py-1.5 rounded-lg text-xs font-semibold bg-teal-600 hover:bg-teal-700 text-white flex items-center space-x-1.5 disabled:opacity-50 shadow-xs cursor-pointer"
+                title="Create patient and synthesize care plan from uploaded summary"
+              >
+                {createPatientLoading ? (
+                  <>
+                    <RefreshCw className="w-3.5 h-3.5 animate-spin" />
+                    <span>Synthesizing Workflow...</span>
+                  </>
+                ) : (
+                  <>
+                    <FileCheck2 className="w-3.5 h-3.5" />
+                    <span>Create Patient + Upload Summary</span>
+                  </>
+                )}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Main Content Container */}
       <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6 space-y-6 flex-1 w-full">
@@ -576,17 +2356,17 @@ export default function DashboardPage() {
             {/* Demographics */}
             <div className="sm:pl-4 pr-2 pt-2 sm:pt-0">
               <p className="text-xs text-slate-500 font-medium uppercase tracking-wider">Demographics</p>
-              <p className="text-sm font-semibold text-slate-800 mt-0.5">{patient.age} yrs • {patient.gender}</p>
-              <p className="text-xs text-slate-500 mt-1">Discharged: {patient.discharge_date}</p>
+              <p className="text-sm font-semibold text-slate-800 mt-0.5">
+                {patient.age ? `${patient.age} yrs • ` : ''}{patient.gender || 'Not specified'}
+              </p>
+              <p className="text-xs text-slate-500 mt-1">Discharged: {patient.discharge_date || 'Not specified'}</p>
             </div>
 
             {/* Condition / Procedure */}
             <div className="sm:pl-4 pr-2 pt-2 sm:pt-0 col-span-2 sm:col-span-1 lg:col-span-2">
               <p className="text-xs text-slate-500 font-medium uppercase tracking-wider">Procedure / Primary Diagnosis</p>
-              <p className="text-sm font-semibold text-slate-800 mt-0.5">
-                {patient.id === 'PT-CABG-001'
-                  ? 'Triple-vessel CAD post-CABG x3'
-                  : patient.condition_category}
+              <p className="text-sm font-semibold text-slate-800 mt-0.5 leading-snug">
+                {activeProfile.primary_diagnosis || patient.condition_category || 'Post-Discharge Recovery'}
               </p>
               <p className="text-xs text-teal-700 font-medium mt-1">
                 Day 2 of 30 • Phase 1: Acute Recovery
@@ -596,17 +2376,17 @@ export default function DashboardPage() {
             {/* Primary Physician */}
             <div className="sm:pl-4 pr-2 pt-2 sm:pt-0">
               <p className="text-xs text-slate-500 font-medium uppercase tracking-wider">Primary Physician</p>
-              <p className="text-sm font-semibold text-slate-800 mt-0.5">{patient.primary_care_physician}</p>
+              <p className="text-sm font-semibold text-slate-800 mt-0.5">{patient.primary_care_physician || 'Not specified'}</p>
               <p className="text-xs text-slate-500 mt-1 flex items-center space-x-1">
                 <PhoneCall className="w-3 h-3 text-slate-400" />
-                <span>Clinic: {patient.clinic_phone}</span>
+                <span>Clinic: {patient.clinic_phone || 'Not specified'}</span>
               </p>
             </div>
 
             {/* Emergency Contact */}
             <div className="sm:pl-4 pt-2 sm:pt-0">
               <p className="text-xs text-slate-500 font-medium uppercase tracking-wider">Emergency Contact</p>
-              <p className="text-xs font-semibold text-slate-800 mt-0.5">{patient.emergency_contact}</p>
+              <p className="text-xs font-semibold text-slate-800 mt-0.5">{patient.emergency_contact || 'Not specified'}</p>
               <p className="text-xs text-slate-400 mt-1">Designated Caregiver</p>
             </div>
           </div>
@@ -806,24 +2586,52 @@ export default function DashboardPage() {
           </div>
         </section>
 
-        {/* 4. Symptom Simulation Demo Controls */}
+        {/* 4. Symptom Simulation Demo Controls & Real-Time Telemetry Input */}
         <section aria-label="Symptom Simulation Controls" className="bg-white border border-slate-200 rounded-xl p-5 shadow-sm">
-          <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
+          <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 pb-3 border-b border-slate-100">
             <div>
               <div className="flex items-center space-x-2">
                 <Stethoscope className="w-4 h-4 text-teal-600" />
-                <h3 className="text-sm font-bold text-slate-900">Interactive Symptom & Event Simulation</h3>
+                <h3 className="text-sm font-bold text-slate-900">Interactive Patient Telemetry &amp; Event Simulation</h3>
                 <span className="text-[11px] font-mono px-2 py-0.5 bg-slate-100 text-slate-600 rounded">
-                  Demo Trigger
+                  Live Event Trigger
                 </span>
               </div>
               <p className="text-xs text-slate-500 mt-1">
-                Select a clinical scenario to trigger the agentic workflow and evaluate safety engine bounds in real-time.
+                Trigger automated scenarios or submit live clinical vitals for {patient.first_name} {patient.last_name} through the Deterministic Safety Engine.
               </p>
             </div>
 
-            {/* Scenario Button Strip */}
-            <div className="flex flex-wrap items-center gap-2">
+            {/* Mode Switcher Tabs */}
+            <div className="flex items-center space-x-1 bg-slate-100 p-1 rounded-lg self-start md:self-auto">
+              <button
+                type="button"
+                onClick={() => setSimulationMode('scenarios')}
+                className={`px-3 py-1.5 rounded-md text-xs font-semibold transition-all ${
+                  simulationMode === 'scenarios'
+                    ? 'bg-white text-slate-900 shadow-xs'
+                    : 'text-slate-600 hover:text-slate-900'
+                }`}
+              >
+                Quick Demo Scenarios
+              </button>
+              <button
+                type="button"
+                onClick={() => setSimulationMode('custom_input')}
+                className={`px-3 py-1.5 rounded-md text-xs font-semibold transition-all ${
+                  simulationMode === 'custom_input'
+                    ? 'bg-white text-teal-700 shadow-xs'
+                    : 'text-slate-600 hover:text-slate-900'
+                }`}
+              >
+                Real-Time Patient Input
+              </button>
+            </div>
+          </div>
+
+          {simulationMode === 'scenarios' ? (
+            /* Scenario Button Strip */
+            <div className="mt-4 flex flex-wrap items-center gap-2">
               <button
                 type="button"
                 onClick={() => runSimulationScenario('routine')}
@@ -849,7 +2657,7 @@ export default function DashboardPage() {
                 }`}
               >
                 <Info className="w-3.5 h-3.5 text-teal-500" />
-                <span>2. Mild Incision Soreness</span>
+                <span>2. Mild Expected Symptom</span>
               </button>
 
               <button
@@ -880,7 +2688,117 @@ export default function DashboardPage() {
                 <span>4. Critical Chest Pain</span>
               </button>
             </div>
-          </div>
+          ) : (
+            /* Live Custom Telemetry Input Form */
+            <form onSubmit={handleCustomSymptomSubmit} className="mt-4 space-y-3">
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-6 gap-3">
+                <div className="sm:col-span-2 lg:col-span-2">
+                  <label className="block text-[11px] font-bold uppercase tracking-wide text-slate-700 mb-1">
+                    Symptom Description
+                  </label>
+                  <input
+                    type="text"
+                    value={customSymptom}
+                    onChange={(e) => setCustomSymptom(e.target.value)}
+                    placeholder="e.g. Mild shortness of breath or wound redness"
+                    className="w-full text-xs p-2 rounded-lg border border-slate-200 bg-slate-50 focus:bg-white focus:outline-none focus:ring-1 focus:ring-teal-500"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-[11px] font-bold uppercase tracking-wide text-slate-700 mb-1">
+                    Pain / Severity (1-10)
+                  </label>
+                  <select
+                    value={customSeverity}
+                    onChange={(e) => setCustomSeverity(Number(e.target.value))}
+                    className="w-full text-xs p-2 rounded-lg border border-slate-200 bg-slate-50 focus:bg-white focus:outline-none focus:ring-1 focus:ring-teal-500"
+                  >
+                    {[1, 2, 3, 4, 5, 6, 7, 8, 9, 10].map((num) => (
+                      <option key={num} value={num}>
+                        {num} {num <= 3 ? '(Mild)' : num <= 6 ? '(Moderate)' : num <= 8 ? '(Severe)' : '(Emergency)'}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+
+                <div>
+                  <label className="block text-[11px] font-bold uppercase tracking-wide text-slate-700 mb-1">
+                    Core Temp (°F)
+                  </label>
+                  <input
+                    type="number"
+                    step="0.1"
+                    value={customTemp}
+                    onChange={(e) => setCustomTemp(e.target.value)}
+                    placeholder="98.6"
+                    className="w-full text-xs p-2 rounded-lg border border-slate-200 bg-slate-50 focus:bg-white focus:outline-none focus:ring-1 focus:ring-teal-500 font-mono"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-[11px] font-bold uppercase tracking-wide text-slate-700 mb-1">
+                    BP (Sys / Dia)
+                  </label>
+                  <div className="flex items-center space-x-1">
+                    <input
+                      type="number"
+                      value={customSysBP}
+                      onChange={(e) => setCustomSysBP(e.target.value)}
+                      placeholder="120"
+                      className="w-1/2 text-xs p-2 rounded-lg border border-slate-200 bg-slate-50 focus:bg-white focus:outline-none focus:ring-1 focus:ring-teal-500 font-mono"
+                    />
+                    <span className="text-slate-400">/</span>
+                    <input
+                      type="number"
+                      value={customDiaBP}
+                      onChange={(e) => setCustomDiaBP(e.target.value)}
+                      placeholder="80"
+                      className="w-1/2 text-xs p-2 rounded-lg border border-slate-200 bg-slate-50 focus:bg-white focus:outline-none focus:ring-1 focus:ring-teal-500 font-mono"
+                    />
+                  </div>
+                </div>
+
+                <div>
+                  <label className="block text-[11px] font-bold uppercase tracking-wide text-slate-700 mb-1">
+                    SpO2 / HR / Weight
+                  </label>
+                  <div className="flex items-center space-x-1">
+                    <input
+                      type="number"
+                      value={customSpo2}
+                      onChange={(e) => setCustomSpo2(e.target.value)}
+                      placeholder="SpO2 %"
+                      title="Oxygen saturation %"
+                      className="w-1/2 text-xs p-2 rounded-lg border border-slate-200 bg-slate-50 focus:bg-white focus:outline-none focus:ring-1 focus:ring-teal-500 font-mono"
+                    />
+                    <input
+                      type="number"
+                      value={customHeartRate}
+                      onChange={(e) => setCustomHeartRate(e.target.value)}
+                      placeholder="HR bpm"
+                      title="Heart rate bpm"
+                      className="w-1/2 text-xs p-2 rounded-lg border border-slate-200 bg-slate-50 focus:bg-white focus:outline-none focus:ring-1 focus:ring-teal-500 font-mono"
+                    />
+                  </div>
+                </div>
+              </div>
+
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between pt-2 gap-2">
+                <p className="text-[11px] text-slate-500">
+                  Clinical safety triggers: Temp ≥ 101.5°F triggers HIGH fever rule. &quot;Chest pain&quot; or SpO2 ≤ 90% triggers CRITICAL emergency protocol.
+                </p>
+                <button
+                  type="submit"
+                  disabled={loading}
+                  className="px-4 py-2 bg-teal-600 hover:bg-teal-700 text-white rounded-lg text-xs font-semibold flex items-center space-x-1.5 shadow-sm transition-all disabled:opacity-50 self-end sm:self-auto shrink-0"
+                >
+                  <Send className="w-3.5 h-3.5" />
+                  <span>Submit Live Telemetry &amp; Evaluate</span>
+                </button>
+              </div>
+            </form>
+          )}
 
           {/* Loading Indicator */}
           {loading && (
@@ -906,7 +2824,7 @@ export default function DashboardPage() {
                     <span>30-Day Recovery Roadmap</span>
                   </h3>
                   <p className="text-xs text-slate-500">
-                    Phase 1 of 4: Immediate Acute Post-Op (Days 1–7)
+                    Phase 1 of 4: Acute Post-Discharge Recovery (Days 1–7)
                   </p>
                 </div>
                 <span className="text-xs font-bold text-teal-700 bg-teal-50 px-2.5 py-1 rounded-full border border-teal-200">
@@ -927,24 +2845,18 @@ export default function DashboardPage() {
                 </div>
               </div>
 
-              {/* Phase Milestones */}
+              {/* Patient-Specific Phase Milestones */}
               <div className="mt-4 pt-3 border-t border-slate-100">
                 <p className="text-xs font-bold text-slate-700 mb-2 uppercase tracking-wide">
                   Active Clinical Milestones (Phase 1):
                 </p>
                 <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
-                  <div className="p-2.5 bg-slate-50 rounded-lg border border-slate-200 text-xs">
-                    <p className="font-semibold text-slate-800">Sternal Precautions</p>
-                    <p className="text-[11px] text-slate-500 mt-0.5">No lifting &gt;10 lbs. Hug pillow when coughing.</p>
-                  </div>
-                  <div className="p-2.5 bg-slate-50 rounded-lg border border-slate-200 text-xs">
-                    <p className="font-semibold text-slate-800">Pulmonary Hygiene</p>
-                    <p className="text-[11px] text-slate-500 mt-0.5">Incentive spirometer 10x/hr while awake.</p>
-                  </div>
-                  <div className="p-2.5 bg-slate-50 rounded-lg border border-slate-200 text-xs">
-                    <p className="font-semibold text-slate-800">Daily Telemetry</p>
-                    <p className="text-[11px] text-slate-500 mt-0.5">Record dry weight, BP, HR & temp every morning.</p>
-                  </div>
+                  {activeMilestones.map((ms, idx) => (
+                    <div key={idx} className="p-2.5 bg-slate-50 rounded-lg border border-slate-200 text-xs">
+                      <p className="font-semibold text-slate-800">{ms.title}</p>
+                      <p className="text-[11px] text-slate-500 mt-0.5 leading-relaxed">{ms.description}</p>
+                    </div>
+                  ))}
                 </div>
               </div>
             </section>
@@ -958,14 +2870,26 @@ export default function DashboardPage() {
                     <span>Today&apos;s Care Tasks (Day 2)</span>
                   </h3>
                   <p className="text-xs text-slate-500 mt-0.5">
-                    Monitoring Agent tracks daily task completion and flags non-adherence.
+                    Monitoring Agent tracks daily task completion and flags non-adherence for {patient.first_name} {patient.last_name}.
                   </p>
                 </div>
-                {/* Adherence Counter */}
-                <div className="text-right">
-                  <span className="text-xs text-slate-500">Adherence Score: </span>
+                {/* Adherence Counter & Status Breakdown */}
+                <div className="flex flex-wrap items-center gap-1.5 justify-end">
+                  <span className="px-2 py-0.5 rounded-full bg-emerald-50 text-emerald-700 border border-emerald-200 text-[11px] font-medium">
+                    ✓ {completedTasksCount} Done
+                  </span>
+                  {snoozedTasksCount > 0 && (
+                    <span className="px-2 py-0.5 rounded-full bg-amber-50 text-amber-700 border border-amber-200 text-[11px] font-medium">
+                      ⏱ {snoozedTasksCount} Snoozed
+                    </span>
+                  )}
+                  {missedTasksCount > 0 && (
+                    <span className="px-2 py-0.5 rounded-full bg-rose-50 text-rose-700 border border-rose-200 text-[11px] font-medium">
+                      ✗ {missedTasksCount} Missed
+                    </span>
+                  )}
                   <span
-                    className={`text-xs font-bold px-2 py-0.5 rounded-full ${
+                    className={`text-xs font-bold px-2.5 py-0.5 rounded-full ${
                       adherencePercent >= 80
                         ? 'bg-emerald-100 text-emerald-800'
                         : adherencePercent >= 50
@@ -978,60 +2902,133 @@ export default function DashboardPage() {
                 </div>
               </div>
 
-              {/* Task Checklist Items */}
+              {/* Task Checklist Items with Real-Time Actions */}
               <div className="mt-3 space-y-2.5">
-                {tasks.map((task) => {
-                  const isDone = task.status === 'COMPLETED';
-                  return (
-                    <div
-                      key={task.task_id}
-                      onClick={() => handleToggleTask(task.task_id)}
-                      className={`p-3 rounded-lg border transition-all cursor-pointer flex items-start space-x-3 ${
-                        isDone
-                          ? 'bg-emerald-50/50 border-emerald-200 text-slate-700'
-                          : 'bg-slate-50 border-slate-200 hover:border-slate-300 text-slate-900'
-                      }`}
-                    >
-                      {/* Interactive Checkbox */}
-                      <button
-                        type="button"
-                        className={`w-5 h-5 rounded mt-0.5 flex items-center justify-center shrink-0 transition-colors ${
-                          isDone
-                            ? 'bg-emerald-600 text-white'
-                            : 'border border-slate-300 bg-white hover:border-slate-400'
-                        }`}
-                        aria-label={isDone ? `Mark ${task.title} as pending` : `Mark ${task.title} as completed`}
-                      >
-                        {isDone && <Check className="w-3.5 h-3.5" />}
-                      </button>
+                {tasks.length > 0 ? (
+                  tasks.map((task) => {
+                    const isDone = task.status === 'COMPLETED';
+                    const isSnoozed = task.status === 'SNOOZED';
+                    const isMissed = task.status === 'MISSED';
 
-                      {/* Content */}
-                      <div className="flex-1 min-w-0">
-                        <div className="flex items-center justify-between">
-                          <div className="flex items-center space-x-2">
-                            <span
-                              className={`text-xs font-bold ${
-                                isDone ? 'line-through text-slate-500' : 'text-slate-900'
-                              }`}
-                            >
-                              {task.title}
-                            </span>
-                            <span className="text-[10px] font-mono px-1.5 py-0.2 bg-slate-200/70 text-slate-700 rounded">
-                              {task.category}
-                            </span>
+                    return (
+                      <div
+                        key={task.task_id}
+                        className={`p-3 rounded-lg border transition-all flex flex-col sm:flex-row sm:items-center justify-between gap-2.5 ${
+                          isDone
+                            ? 'bg-emerald-50/50 border-emerald-200 text-slate-700'
+                            : isSnoozed
+                            ? 'bg-amber-50/50 border-amber-200 text-slate-800'
+                            : isMissed
+                            ? 'bg-rose-50/40 border-rose-200 text-slate-700'
+                            : 'bg-slate-50 border-slate-200 hover:border-slate-300 text-slate-900'
+                        }`}
+                      >
+                        {/* Task info */}
+                        <div className="flex items-start space-x-2.5 flex-1 min-w-0">
+                          <button
+                            type="button"
+                            onClick={() => handleTaskAction(task.task_id, isDone ? 'miss' : 'complete')}
+                            className={`w-5 h-5 rounded mt-0.5 flex items-center justify-center shrink-0 transition-colors ${
+                              isDone
+                                ? 'bg-emerald-600 text-white'
+                                : isSnoozed
+                                ? 'bg-amber-500 text-white'
+                                : isMissed
+                                ? 'bg-rose-500 text-white'
+                                : 'border border-slate-300 bg-white hover:border-slate-400'
+                            }`}
+                            aria-label={`Toggle ${task.title}`}
+                          >
+                            {isDone && <Check className="w-3.5 h-3.5" />}
+                            {isSnoozed && <Clock3 className="w-3 h-3" />}
+                            {isMissed && <X className="w-3.5 h-3.5" />}
+                          </button>
+
+                          <div className="flex-1 min-w-0">
+                            <div className="flex flex-wrap items-center gap-1.5">
+                              <span
+                                className={`text-xs font-bold ${
+                                  isDone
+                                    ? 'line-through text-slate-500'
+                                    : isMissed
+                                    ? 'text-rose-900'
+                                    : 'text-slate-900'
+                                }`}
+                              >
+                                {task.title}
+                              </span>
+                              <span className="text-[10px] font-mono px-1.5 py-0.2 bg-slate-200/70 text-slate-700 rounded">
+                                {task.category}
+                              </span>
+                              {isSnoozed && (
+                                <span className="text-[10px] font-bold px-1.5 py-0.2 bg-amber-100 text-amber-800 rounded">
+                                  SNOOZED
+                                </span>
+                              )}
+                              {isMissed && (
+                                <span className="text-[10px] font-bold px-1.5 py-0.2 bg-rose-100 text-rose-800 rounded">
+                                  MISSED
+                                </span>
+                              )}
+                            </div>
+                            <p className={`text-xs mt-0.5 ${isDone ? 'text-slate-400' : 'text-slate-600'}`}>
+                              {task.description}
+                            </p>
                           </div>
-                          <span className="text-[11px] font-mono text-slate-400 flex items-center space-x-1 shrink-0">
+                        </div>
+
+                        {/* Action buttons & time */}
+                        <div className="flex items-center space-x-1 shrink-0 self-end sm:self-center">
+                          <span className="text-[11px] font-mono text-slate-400 mr-2 flex items-center space-x-1">
                             <Clock className="w-3 h-3" />
                             <span>{task.scheduled_time}</span>
                           </span>
+
+                          <button
+                            type="button"
+                            onClick={() => handleTaskAction(task.task_id, 'complete')}
+                            className={`px-2 py-1 text-[11px] font-semibold rounded border transition-colors ${
+                              isDone
+                                ? 'bg-emerald-600 text-white border-emerald-600'
+                                : 'bg-white text-emerald-700 border-emerald-300 hover:bg-emerald-50'
+                            }`}
+                            title="Mark completed"
+                          >
+                            ✓ Done
+                          </button>
+
+                          <button
+                            type="button"
+                            onClick={() => handleTaskAction(task.task_id, 'snooze')}
+                            className={`px-2 py-1 text-[11px] font-semibold rounded border transition-colors ${
+                              isSnoozed
+                                ? 'bg-amber-600 text-white border-amber-600'
+                                : 'bg-white text-amber-700 border-amber-300 hover:bg-amber-50'
+                            }`}
+                            title="Snooze task"
+                          >
+                            ⏱ Snooze
+                          </button>
+
+                          <button
+                            type="button"
+                            onClick={() => handleTaskAction(task.task_id, 'miss')}
+                            className={`px-2 py-1 text-[11px] font-semibold rounded border transition-colors ${
+                              isMissed
+                                ? 'bg-rose-600 text-white border-rose-600'
+                                : 'bg-white text-rose-700 border-rose-300 hover:bg-rose-50'
+                            }`}
+                            title="Mark missed"
+                          >
+                            ✗ Miss
+                          </button>
                         </div>
-                        <p className={`text-xs mt-0.5 ${isDone ? 'text-slate-400' : 'text-slate-600'}`}>
-                          {task.description}
-                        </p>
                       </div>
-                    </div>
-                  );
-                })}
+                    );
+                  })
+                ) : (
+                  <p className="text-xs text-slate-500 italic py-2">No care tasks scheduled for today.</p>
+                )}
               </div>
             </section>
 
@@ -1042,37 +3039,46 @@ export default function DashboardPage() {
                 <span>Prescribed Discharge Regimen &amp; Precautions</span>
               </h3>
               <p className="text-xs text-slate-500 mt-0.5">
-                Extracted directly by the Discharge Understanding Agent.
+                Extracted directly by the Discharge Understanding Agent for {patient.first_name} {patient.last_name}.
               </p>
 
+              {/* Dynamic Medications List */}
               <div className="mt-3 grid grid-cols-1 sm:grid-cols-2 gap-3">
-                {DEMO_DISCHARGE_PROFILE.medications.map((med, idx) => (
-                  <div key={idx} className="p-2.5 bg-slate-50 rounded-lg border border-slate-200 text-xs">
-                    <div className="flex items-center justify-between">
-                      <span className="font-bold text-slate-800">{med.drug_name}</span>
-                      <span className="text-[10px] font-mono text-slate-500">{med.dosage}</span>
+                {activeProfile.medications && activeProfile.medications.length > 0 ? (
+                  activeProfile.medications.map((med, idx) => (
+                    <div key={idx} className="p-2.5 bg-slate-50 rounded-lg border border-slate-200 text-xs">
+                      <div className="flex items-center justify-between">
+                        <span className="font-bold text-slate-800">{med.drug_name}</span>
+                        <span className="text-[10px] font-mono text-slate-500">{med.dosage}</span>
+                      </div>
+                      <p className="text-[11px] text-slate-600 mt-1">{med.frequency} • {med.route}</p>
+                      <p className="text-[10px] text-slate-400 italic mt-0.5">{med.indication}</p>
                     </div>
-                    <p className="text-[11px] text-slate-600 mt-1">{med.frequency} • {med.route}</p>
-                    <p className="text-[10px] text-slate-400 italic mt-0.5">{med.indication}</p>
-                  </div>
-                ))}
+                  ))
+                ) : (
+                  <p className="text-xs text-slate-500 italic">No medications listed in discharge profile.</p>
+                )}
               </div>
 
-              {/* Red-Flag Rules Tagged in Profile */}
+              {/* Dynamic Red-Flag Rules Tagged in Profile */}
               <div className="mt-4 pt-3 border-t border-slate-100">
                 <p className="text-xs font-bold text-slate-700 mb-1.5 flex items-center space-x-1">
                   <ShieldAlert className="w-3.5 h-3.5 text-rose-600" />
                   <span>Monitored Red-Flag Thresholds:</span>
                 </p>
                 <div className="flex flex-wrap gap-1.5">
-                  {DEMO_DISCHARGE_PROFILE.red_flag_warnings.map((warn, i) => (
-                    <span
-                      key={i}
-                      className="text-[11px] px-2 py-0.5 bg-rose-50 text-rose-800 rounded border border-rose-200"
-                    >
-                      {warn}
-                    </span>
-                  ))}
+                  {activeProfile.red_flag_warnings && activeProfile.red_flag_warnings.length > 0 ? (
+                    activeProfile.red_flag_warnings.map((warn, i) => (
+                      <span
+                        key={i}
+                        className="text-[11px] px-2 py-0.5 bg-rose-50 text-rose-800 rounded border border-rose-200"
+                      >
+                        {warn}
+                      </span>
+                    ))
+                  ) : (
+                    <span className="text-xs text-slate-500 italic">Standard clinical red-flags monitored.</span>
+                  )}
                 </div>
               </div>
             </section>
@@ -1180,8 +3186,16 @@ export default function DashboardPage() {
                       </p>
                     </div>
                   </div>
-                  <span className="px-2 py-0.5 bg-rose-600 text-white text-xs font-bold rounded">
-                    TICKET OPEN
+                  <span
+                    className={`px-2 py-0.5 text-xs font-bold rounded ${
+                      workflowState?.escalation_ticket?.status === 'RESOLVED'
+                        ? 'bg-emerald-600 text-white'
+                        : 'bg-rose-600 text-white'
+                    }`}
+                  >
+                    {workflowState?.escalation_ticket?.status === 'RESOLVED'
+                      ? 'RESOLVED & VERIFIED'
+                      : 'TICKET OPEN'}
                   </span>
                 </div>
 
@@ -1190,12 +3204,12 @@ export default function DashboardPage() {
                   <div>
                     <span className="text-slate-400">Ticket ID:</span>{' '}
                     <span className="font-bold text-slate-800">
-                      {workflowState?.escalation_ticket?.ticket_id || 'ESC-2026-0916'}
+                      {workflowState?.escalation_ticket?.ticket_id || 'ESC-2026-ALERT'}
                     </span>
                   </div>
                   <div>
                     <span className="text-slate-400">Routing:</span>{' '}
-                    <span className="font-bold text-rose-700">Surgical Triage Board</span>
+                    <span className="font-bold text-rose-700">Clinical Triage Board</span>
                   </div>
                   <div>
                     <span className="text-slate-400">Patient:</span>{' '}
@@ -1232,7 +3246,7 @@ export default function DashboardPage() {
                     <p className="text-slate-700 mt-0.5">
                       {workflowState?.escalation_ticket?.draft_sbar?.background ||
                         workflowState?.risk_assessment?.sbar?.background ||
-                        `Patient ${patient.id}, ${patient.age}yo post-CABG x3 on post-op day 2.`}
+                        `Patient ${patient.id} (${patient.first_name} ${patient.last_name}), ${patient.age}yo on Day 2 post-discharge for ${activeProfile.primary_diagnosis}.`}
                     </p>
                   </div>
 
@@ -1243,7 +3257,7 @@ export default function DashboardPage() {
                     <p className="text-slate-700 mt-0.5">
                       {workflowState?.escalation_ticket?.draft_sbar?.assessment ||
                         workflowState?.risk_assessment?.sbar?.assessment ||
-                        'Risk reasoning flags complication risk. Deterministic safety rule enforces clinical review.'}
+                        'Risk reasoning flags acute parameter deviation. Deterministic safety rule enforces prompt clinical review.'}
                     </p>
                   </div>
 
@@ -1259,8 +3273,92 @@ export default function DashboardPage() {
                   </div>
                 </div>
 
+                {/* Human Clinical Review & Verification Loop */}
+                <div className="p-3 bg-slate-50 rounded-lg border border-slate-200 text-xs space-y-2.5">
+                  <div className="flex items-center justify-between">
+                    <span className="font-bold text-slate-900 uppercase tracking-wide text-[11px] flex items-center space-x-1.5">
+                      <Stethoscope className="w-3.5 h-3.5 text-teal-600" />
+                      <span>Human Clinical Verification Loop</span>
+                    </span>
+                    {workflowState?.escalation_ticket?.status === 'RESOLVED' ? (
+                      <span className="px-2 py-0.5 bg-emerald-100 text-emerald-800 rounded font-bold text-[10px]">
+                        ✓ REVIEW VERIFIED
+                      </span>
+                    ) : (
+                      <span className="px-2 py-0.5 bg-rose-100 text-rose-800 rounded font-bold text-[10px]">
+                        PENDING SIGN-OFF
+                      </span>
+                    )}
+                  </div>
+
+                  {workflowState?.escalation_ticket?.status === 'RESOLVED' ? (
+                    <div className="p-2.5 bg-emerald-50 border border-emerald-200 rounded text-emerald-900 space-y-1">
+                      <p className="font-bold text-xs flex items-center space-x-1">
+                        <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600" />
+                        <span>
+                          Reviewed by{' '}
+                          {workflowState.escalation_ticket.assigned_clinician || clinicianName}
+                        </span>
+                      </p>
+                      <p className="text-[11px] text-emerald-800">
+                        {workflowState.escalation_ticket.clinician_action_notes || reviewNotes}
+                      </p>
+                    </div>
+                  ) : (
+                    <div className="space-y-2">
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                        <div>
+                          <label className="block text-[10px] text-slate-500 font-medium uppercase mb-0.5">
+                            Attending Clinician
+                          </label>
+                          <input
+                            type="text"
+                            value={clinicianName}
+                            onChange={(e) => setClinicianName(e.target.value)}
+                            className="w-full text-xs p-1.5 rounded border border-slate-200 bg-white"
+                          />
+                        </div>
+                        <div>
+                          <label className="block text-[10px] text-slate-500 font-medium uppercase mb-0.5">
+                            Verification Action Notes
+                          </label>
+                          <input
+                            type="text"
+                            value={reviewNotes}
+                            onChange={(e) => setReviewNotes(e.target.value)}
+                            className="w-full text-xs p-1.5 rounded border border-slate-200 bg-white"
+                          />
+                        </div>
+                      </div>
+
+                      {reviewSuccessMessage && (
+                        <p className="text-[11px] text-emerald-700 font-medium">{reviewSuccessMessage}</p>
+                      )}
+
+                      <button
+                        type="button"
+                        onClick={handleClinicalReview}
+                        disabled={reviewLoading}
+                        className="w-full py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg font-bold text-xs flex items-center justify-center space-x-1.5 transition-colors disabled:opacity-50 shadow-xs"
+                      >
+                        {reviewLoading ? (
+                          <>
+                            <RefreshCw className="w-3.5 h-3.5 animate-spin" />
+                            <span>Verifying Clinical SBAR...</span>
+                          </>
+                        ) : (
+                          <>
+                            <CheckCircle2 className="w-3.5 h-3.5" />
+                            <span>Mark Reviewed (Simulated Clinical Verification)</span>
+                          </>
+                        )}
+                      </button>
+                    </div>
+                  )}
+                </div>
+
                 <div className="text-[11px] text-slate-500 italic">
-                  Note: The AI escalation agent generated this structured note. Only licensed clinical staff may resolve or execute medical directives.
+                  Note: The AI escalation agent generated this structured draft. Only licensed clinical staff may resolve tickets or authorize medical interventions.
                 </div>
               </section>
             ) : (
@@ -1294,7 +3392,7 @@ export default function DashboardPage() {
                   <p className="font-semibold text-teal-900 mb-1">Message to Patient:</p>
                   <p>
                     {workflowState?.followup_response?.reply ||
-                      `Hello ${patient.first_name}, everything looks on track today. Please remember to observe sternal precautions and continue taking your scheduled medications.`}
+                      `Hello ${patient.first_name}, everything looks on track today. Please continue observing your activity guidelines: '${activeProfile.activity_restrictions}'.`}
                   </p>
                 </div>
 
@@ -1304,7 +3402,7 @@ export default function DashboardPage() {
                     <CheckCircle2 className="w-4 h-4 text-teal-600 shrink-0" />
                     <span className="text-slate-700 font-medium">
                       {workflowState?.followup_response?.suggested_action ||
-                        'Review afternoon care tasks and resting vitals log.'}
+                        'Review today\'s scheduled care tasks and resting vitals log.'}
                     </span>
                   </div>
                   <ChevronRight className="w-4 h-4 text-slate-400" />
@@ -1333,7 +3431,7 @@ export default function DashboardPage() {
                   return (
                     <div
                       key={p.patient_id}
-                      onClick={() => setSelectedPatientId(p.patient_id)}
+                      onClick={() => handleSelectPatient(p.patient_id)}
                       className={`p-2 rounded flex items-center justify-between cursor-pointer transition-colors ${
                         isCurrent
                           ? 'bg-slate-100 font-semibold border border-slate-300'
@@ -1371,6 +3469,113 @@ export default function DashboardPage() {
             </section>
           </div>
         </div>
+
+        {/* 6. Recovery Activity Timeline & Audit Trail */}
+        <section aria-label="Recovery Activity Timeline" className="bg-white border border-slate-200 rounded-xl p-5 shadow-sm">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between pb-3 border-b border-slate-100 gap-2">
+            <div>
+              <div className="flex items-center space-x-2">
+                <Clock3 className="w-4 h-4 text-teal-600" />
+                <h3 className="text-sm font-bold text-slate-900">Recovery Activity Timeline &amp; State Transitions</h3>
+                <span className="text-[11px] font-mono px-2 py-0.5 bg-slate-100 text-slate-600 rounded">
+                  Event-Driven Loop
+                </span>
+              </div>
+              <p className="text-xs text-slate-500 mt-0.5">
+                Chronological recovery telemetry, task lifecycle transitions, safety flags, and clinical reviews for {patient.first_name} {patient.last_name}.
+              </p>
+            </div>
+            <button
+              type="button"
+              onClick={() => fetchTimeline(selectedPatientId)}
+              className="self-start sm:self-auto flex items-center space-x-1 px-2.5 py-1 text-xs text-slate-600 hover:text-slate-900 bg-slate-50 hover:bg-slate-100 rounded border border-slate-200 font-medium transition-colors"
+            >
+              <RefreshCw className="w-3 h-3" />
+              <span>Refresh Timeline</span>
+            </button>
+          </div>
+
+          <div className="mt-4 space-y-2.5 max-h-80 overflow-y-auto pr-1">
+            {timelineEvents && timelineEvents.length > 0 ? (
+              timelineEvents.map((evt) => {
+                const isTask = evt.event_type.startsWith('TASK_');
+                const isVital =
+                  evt.event_type === 'VITAL_RECORDED' || evt.event_type === 'SYMPTOM_REPORTED';
+                const isSafety = evt.event_type === 'SAFETY_TRIGGERED';
+                const isEscalation = evt.event_type === 'ESCALATION_CREATED';
+                const isReview = evt.event_type === 'CLINICAL_REVIEW_COMPLETED';
+
+                const badgeBg = isReview
+                  ? 'bg-emerald-100 text-emerald-800 border-emerald-300'
+                  : isEscalation
+                  ? 'bg-rose-100 text-rose-800 border-rose-300'
+                  : isSafety
+                  ? 'bg-amber-100 text-amber-800 border-amber-300'
+                  : isVital
+                  ? 'bg-blue-100 text-blue-800 border-blue-300'
+                  : 'bg-teal-100 text-teal-800 border-teal-300';
+
+                const icon = isReview ? (
+                  <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0 mt-0.5" />
+                ) : isEscalation ? (
+                  <AlertOctagon className="w-4 h-4 text-rose-600 shrink-0 mt-0.5" />
+                ) : isSafety ? (
+                  <ShieldAlert className="w-4 h-4 text-amber-600 shrink-0 mt-0.5" />
+                ) : isVital ? (
+                  <Activity className="w-4 h-4 text-blue-600 shrink-0 mt-0.5" />
+                ) : (
+                  <Check className="w-4 h-4 text-teal-600 shrink-0 mt-0.5" />
+                );
+
+                const timeStr = evt.timestamp
+                  ? new Date(evt.timestamp).toLocaleTimeString([], {
+                      hour: '2-digit',
+                      minute: '2-digit',
+                      second: '2-digit',
+                    })
+                  : 'Just now';
+
+                return (
+                  <div
+                    key={evt.event_id}
+                    className="p-3 bg-slate-50 border border-slate-200 rounded-lg flex items-start space-x-3 text-xs hover:bg-slate-100/60 transition-colors"
+                  >
+                    {icon}
+                    <div className="flex-1 min-w-0">
+                      <div className="flex flex-wrap items-center justify-between gap-1">
+                        <div className="flex items-center space-x-2">
+                          <span
+                            className={`px-2 py-0.5 text-[10px] font-mono font-bold rounded border ${badgeBg}`}
+                          >
+                            {evt.event_type}
+                          </span>
+                          <span className="text-[10px] text-slate-400 font-mono">
+                            {evt.run_id}
+                          </span>
+                          {evt.source && (
+                            <span className="text-[10px] px-1.5 py-0.2 bg-slate-200 text-slate-700 rounded font-medium">
+                              {evt.source}
+                            </span>
+                          )}
+                        </div>
+                        <span className="text-[11px] text-slate-400 font-mono shrink-0">
+                          {timeStr}
+                        </span>
+                      </div>
+                      <p className="text-slate-800 mt-1 font-medium leading-snug">
+                        {String(evt.value || evt.event_type)}
+                      </p>
+                    </div>
+                  </div>
+                );
+              })
+            ) : (
+              <div className="py-6 text-center text-xs text-slate-400 italic bg-slate-50 rounded-lg border border-dashed border-slate-200">
+                No chronological recovery events recorded yet. Complete a task or submit vitals above to initiate the event loop.
+              </div>
+            )}
+          </div>
+        </section>
       </main>
 
       {/* Footer */}
@@ -1385,5 +3590,7 @@ export default function DashboardPage() {
         </div>
       </footer>
     </div>
+    )}
+  </div>
   );
 }

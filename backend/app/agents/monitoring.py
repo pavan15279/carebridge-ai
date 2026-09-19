@@ -40,6 +40,7 @@ class MonitoringAgent:
         pending: List[Dict[str, Any]] = []
         missed: List[Dict[str, Any]] = []
         skipped: List[Dict[str, Any]] = []
+        snoozed: List[Dict[str, Any]] = []
 
         for task in parsed_tasks:
             task_dict = task.model_dump(mode="json")
@@ -51,6 +52,8 @@ class MonitoringAgent:
                 missed.append(task_dict)
             elif task.status == TaskStatus.SKIPPED:
                 skipped.append(task_dict)
+            elif task.status == TaskStatus.SNOOZED:
+                snoozed.append(task_dict)
 
         total_tasks = len(parsed_tasks)
         adherence_percentage = (
@@ -66,9 +69,11 @@ class MonitoringAgent:
             "pending_count": len(pending),
             "missed_count": len(missed),
             "skipped_count": len(skipped),
+            "snoozed_count": len(snoozed),
             "adherence_percentage": adherence_percentage,
             "completed_tasks": completed,
             "pending_tasks": pending,
             "missed_tasks": missed,
             "skipped_tasks": skipped,
+            "snoozed_tasks": snoozed,
         }

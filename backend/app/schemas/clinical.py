@@ -25,6 +25,7 @@ class TaskStatus(str, Enum):
     COMPLETED = "COMPLETED"
     MISSED = "MISSED"
     SKIPPED = "SKIPPED"
+    SNOOZED = "SNOOZED"
 
 class TicketStatus(str, Enum):
     OPEN = "OPEN"
@@ -36,19 +37,20 @@ class PatientBase(BaseModel):
     id: str
     first_name: str
     last_name: str
-    age: int
-    gender: str
-    discharge_date: str
-    condition_category: str
-    primary_care_physician: str
-    clinic_phone: str
-    emergency_contact: str
+    age: Optional[int] = None
+    gender: Optional[str] = "Not specified"
+    discharge_date: Optional[str] = None
+    condition_category: Optional[str] = "General Medicine"
+    primary_care_physician: Optional[str] = "Not specified"
+    clinic_phone: Optional[str] = "Not specified"
+    emergency_contact: Optional[str] = "Not specified"
+    is_demo: bool = False
 
 # --- Medications ---
 class MedicationItem(BaseModel):
     drug_name: str
     dosage: str
-    route: str = "Oral"
+    route: str = "Not specified"
     frequency: str
     schedule_slots: List[str] = Field(default_factory=list, description="e.g. ['08:00', '20:00']")
     indication: str
@@ -155,3 +157,121 @@ class ChatMessageResponse(BaseModel):
     risk_level: RiskLevel = RiskLevel.LOW
     suggested_action: Optional[str] = None
     disclaimer: str
+
+
+# --- Recovery Events & Stateful Coordination ---
+class RecoveryEventType(str, Enum):
+    PATIENT_CREATED = "PATIENT_CREATED"
+    DISCHARGE_UPLOADED = "DISCHARGE_UPLOADED"
+    DISCHARGE_PARSED = "DISCHARGE_PARSED"
+    RECOVERY_PLAN_CREATED = "RECOVERY_PLAN_CREATED"
+    TASK_COMPLETED = "TASK_COMPLETED"
+    TASK_MISSED = "TASK_MISSED"
+    TASK_SNOOZED = "TASK_SNOOZED"
+    VITAL_RECORDED = "VITAL_RECORDED"
+    SYMPTOM_REPORTED = "SYMPTOM_REPORTED"
+    FOLLOWUP_COMPLETED = "FOLLOWUP_COMPLETED"
+    REMINDER_SENT = "REMINDER_SENT"
+    SAFETY_TRIGGERED = "SAFETY_TRIGGERED"
+    ESCALATION_CREATED = "ESCALATION_CREATED"
+    ESCALATION_ACKNOWLEDGED = "ESCALATION_ACKNOWLEDGED"
+    CLINICAL_REVIEW_COMPLETED = "CLINICAL_REVIEW_COMPLETED"
+
+
+class RecoveryEvent(BaseModel):
+    event_id: str
+    run_id: str
+    patient_id: str
+    event_type: RecoveryEventType
+    task_id: Optional[str] = None
+    timestamp: datetime = Field(default_factory=datetime.utcnow)
+    status: Optional[str] = None
+    value: Optional[Any] = None
+    source: Optional[str] = "PATIENT"
+    metadata: Dict[str, Any] = Field(default_factory=dict)
+
+
+class RecoveryState(BaseModel):
+    patient_id: str
+    current_phase: str = "Phase 1: Acute Recovery (Days 1-3)"
+    current_day: int = 2
+    active_tasks: List[CareTask] = Field(default_factory=list)
+    completed_tasks: List[CareTask] = Field(default_factory=list)
+    missed_tasks: List[CareTask] = Field(default_factory=list)
+    snoozed_tasks: List[CareTask] = Field(default_factory=list)
+    adherence_percentage: float = 100.0
+    recent_symptoms: List[Dict[str, Any]] = Field(default_factory=list)
+    recent_vitals: List[Dict[str, Any]] = Field(default_factory=list)
+    recent_events: List[RecoveryEvent] = Field(default_factory=list)
+    pending_followups: List[str] = Field(default_factory=list)
+    risk_level: RiskLevel = RiskLevel.LOW
+    escalation_status: str = "NONE"  # "NONE", "OPEN", "IN_REVIEW", "RESOLVED"
+    active_ticket: Optional[EscalationTicket] = None
+    last_updated: datetime = Field(default_factory=datetime.utcnow)
+
+
+class ClinicalReviewRequest(BaseModel):
+    patient_id: Optional[str] = None
+    clinician_name: str = "Dr. On-Call Attending, MD"
+    action_notes: str = "Symptom and telemetry reviewed. Continued home recovery monitoring authorized."
+
+
+class TaskActionRequest(BaseModel):
+    notes: Optional[str] = None
+
+
+class ExtractTextRequest(BaseModel):
+    filename: str = "discharge_summary.txt"
+    content: Optional[str] = None
+    content_base64: Optional[str] = None
+
+
+class DischargeUploadRequest(BaseModel):
+    filename: str = "discharge_summary.txt"
+    content: Optional[str] = None
+    content_base64: Optional[str] = None
+
+
+class CreatePatientRequest(BaseModel):
+    name: str
+    age: Optional[int] = None
+    gender: Optional[str] = "Not specified"
+    contact: Optional[str] = "Not specified"
+    emergency_contact: Optional[str] = "Not specified"
+    discharge_date: Optional[str] = None
+    primary_diagnosis: Optional[str] = "General Post-Discharge Recovery"
+    condition_category: Optional[str] = "General Medicine"
+    procedure: Optional[str] = None
+    physician_care_team: Optional[str] = "Not specified"
+    discharge_summary_text: Optional[str] = None
+    discharge_summary_base64: Optional[str] = None
+    discharge_summary_filename: Optional[str] = None
+
+
+class LoginRequest(BaseModel):
+    patient_id: Optional[str] = None
+    email: Optional[str] = None
+    password: str
+
+
+class LoginResponse(BaseModel):
+    status: str = "SUCCESS"
+    session_token: str
+    patient_id: str
+    patient_name: str
+    message: str = "Login successful"
+
+
+class SignupRequest(BaseModel):
+    full_name: str
+    email: str
+    password: str
+    confirm_password: str
+
+
+class SignupResponse(BaseModel):
+    status: str = "SUCCESS"
+    session_token: str
+    patient_id: str
+    patient_name: str
+    message: str = "Registration successful"
