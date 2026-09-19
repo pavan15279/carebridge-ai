@@ -25,6 +25,7 @@ from app.agents import CareBridgeOrchestrator
 from app.agents.discharge_understanding import DischargeUnderstandingAgent
 from app.core.session_store import session_store
 from app.core.pdf_extractor import extract_discharge_text, ERROR_UNREADABLE_PDF
+from app.core.safety_rules import ClinicalSafetyEngine
 
 
 def run_orchestrator_tests() -> bool:
@@ -467,8 +468,47 @@ startxref
     except KeyError as e:
         print(f"  [PASS] Cross-patient ticket modification rejected: {str(e)}")
 
+    # --- Scenario 20: Live Symptom Evaluation Regression ('Severe chest pain' + Severity 9 -> CRITICAL) ---
+    print("\n[TEST 20] Live Symptom Regression: 'Severe chest pain' + Severity 9 -> CRITICAL")
+    severe_chest_report = SymptomReport(
+        patient_id="PT-CABG-001",
+        symptom_description="Severe chest pain",
+        severity_score=9,
+        measured_temp=98.6,
+        systolic_bp=150.0,
+        diastolic_bp=95.0,
+        spo2=94.0
+    )
+    res20 = orchestrator.run_patient_workflow("PT-CABG-001", symptom_report=severe_chest_report)
+    assert res20["workflow_route"] == "ESCALATION_COORDINATION_AGENT"
+    assert res20["risk_assessment"]["risk_level"] == RiskLevel.CRITICAL
+    assert "RULE-SYMP-CHEST-PAIN" in res20["risk_assessment"]["deterministic_rule_triggered"]
+    assert res20["risk_assessment"]["care_team_action_required"] is True
+    assert "PLEASE CALL 911 IMMEDIATELY" in res20["risk_assessment"]["immediate_patient_directive"]
+    assert "The system does not determine the underlying medical cause." in res20["risk_assessment"]["clinical_reasoning"]
+    assert res20["escalation_ticket"]["risk_level"] == RiskLevel.CRITICAL
+    print("  [PASS] 'Severe chest pain' + severity 9 -> CRITICAL with RULE-SYMP-CHEST-PAIN")
+    print(f"  [PASS] Directive: {res20['risk_assessment']['immediate_patient_directive'][:60]}...")
+    print(f"  [PASS] Non-diagnostic reasoning: {res20['risk_assessment']['clinical_reasoning']}")
+
+    # Verify robustness across natural phrase variations:
+    variations_to_verify = [
+        "chest pain",
+        "Severe chest pain",
+        "I have severe chest pain",
+        "pressure in my chest",
+        "pain in my chest",
+        "tightness in my chest",
+    ]
+    for var_phrase in variations_to_verify:
+        var_violations = ClinicalSafetyEngine.evaluate_symptom_keywords(var_phrase)
+        assert any(v.rule_id == "RULE-SYMP-CHEST-PAIN" and v.risk_level == RiskLevel.CRITICAL for v in var_violations), (
+            f"Failed to match chest distress for variation: '{var_phrase}'"
+        )
+    print(f"  [PASS] Successfully verified {len(variations_to_verify)} natural phrasing variations for acute chest distress")
+
     print("\n" + "=" * 65)
-    print(" ALL 19 ORCHESTRATOR & AGENT TESTS PASSED SUCCESSFULLY (100%)")
+    print(" ALL 20 ORCHESTRATOR & AGENT TESTS PASSED SUCCESSFULLY (100%)")
     print("=" * 65)
     return True
 

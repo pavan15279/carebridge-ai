@@ -67,12 +67,13 @@ class RiskReasoningAgent:
 
         # 3. Deterministic Safety Override
         if all_violations:
-            highest_risk = (
-                RiskLevel.CRITICAL
-                if any(v.risk_level == RiskLevel.CRITICAL for v in all_violations)
-                else RiskLevel.HIGH
-            )
-            primary = all_violations[0]
+            critical_violations = [v for v in all_violations if v.risk_level == RiskLevel.CRITICAL]
+            if critical_violations:
+                highest_risk = RiskLevel.CRITICAL
+                primary = critical_violations[0]
+            else:
+                highest_risk = RiskLevel.HIGH
+                primary = all_violations[0]
 
             sbar = SbarNote(
                 situation=(

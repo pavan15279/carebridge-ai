@@ -229,8 +229,13 @@ async def report_symptom(report: SymptomReport, authorization: Optional[str] = H
     all_violations = vital_violations + symptom_violations
 
     if all_violations:
-        highest_risk = RiskLevel.CRITICAL if any(v.risk_level == RiskLevel.CRITICAL for v in all_violations) else RiskLevel.HIGH
-        primary_violation = all_violations[0]
+        critical_violations = [v for v in all_violations if v.risk_level == RiskLevel.CRITICAL]
+        if critical_violations:
+            highest_risk = RiskLevel.CRITICAL
+            primary_violation = critical_violations[0]
+        else:
+            highest_risk = RiskLevel.HIGH
+            primary_violation = all_violations[0]
 
         # Formulate clinical SBAR note automatically
         sbar = SbarNote(

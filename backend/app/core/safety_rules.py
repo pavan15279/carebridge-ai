@@ -176,7 +176,16 @@ class ClinicalSafetyEngine:
         team = care_team or "clinical care team"
 
         # Acute Chest Distress (CRITICAL emergency trigger - non-diagnostic)
-        if any(term in lower for term in ["chest pain", "chest pressure", "crushing", "radiating to jaw", "radiating to arm"]):
+        has_chest_keyword = any(k in lower for k in ["chest", "substernal", "breastbone", "precordial"])
+        has_distress_symptom = any(s in lower for s in [
+            "pain", "pressure", "tight", "crush", "heav", "discomfort", "squeez", "ache", "aching", "hurt", "burn"
+        ])
+        has_radiating_or_cardiac_red_flag = any(rf in lower for rf in [
+            "crushing", "radiating to jaw", "radiating to arm", "radiating to left arm",
+            "radiating to the jaw", "radiating to the arm", "radiating to the left arm",
+            "angina"
+        ])
+        if (has_chest_keyword and has_distress_symptom) or has_radiating_or_cardiac_red_flag:
             violations.append(RuleViolation(
                 rule_id="RULE-SYMP-CHEST-PAIN",
                 parameter="Reported Symptom",

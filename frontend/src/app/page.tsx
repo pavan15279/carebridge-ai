@@ -500,17 +500,17 @@ export default function DashboardPage() {
             risk_assessment: {
               patient_id: patientId,
               risk_level: 'CRITICAL',
-              deterministic_rule_triggered: 'RULE-SYMP-CHEST ("chest pain")',
+              deterministic_rule_triggered: 'RULE-SYMP-CHEST-PAIN (Chest pain/pressure description)',
               clinical_reasoning:
-                'Reported severe chest pain is a deterministic high-priority safety trigger requiring immediate emergency evaluation. The system does not determine the underlying medical cause.',
+                'Severe chest pain is a deterministic high-priority safety trigger requiring immediate emergency evaluation. The system does not determine the underlying medical cause.',
               immediate_patient_directive:
-                'EMERGENCY DIRECTIVE: Call 911 immediately or proceed to the nearest emergency department. Stop all physical activity. Do not drive yourself.',
+                'PLEASE CALL 911 IMMEDIATELY. Stop all physical activity and seek emergency medical evaluation. Do not drive yourself.',
               care_team_action_required: true,
               sbar: {
-                situation: 'Triggered Safety Rule RULE-SYMP-CHEST: acute chest distress reported.',
+                situation: 'Safety Rule Triggered: RULE-SYMP-CHEST-PAIN. Observed Reported Symptom: Chest pain/pressure description (Threshold: Reported acute chest pain or radiating discomfort).',
                 background: `Patient ${patientId} (${currentPatient.first_name} ${currentPatient.last_name}), post-discharge Day 2 for ${currentProfile.primary_diagnosis}.`,
-                assessment: 'Deterministic high-priority safety trigger breached. Urgent in-person emergency evaluation required.',
-                recommendation: 'Immediate 911 dispatch and on-call clinical notification.',
+                assessment: 'Severe chest pain is a deterministic high-priority safety trigger requiring immediate emergency evaluation. The system does not determine the underlying medical cause. Deterministic safety rule breached.',
+                recommendation: 'Clinical triage nurse or emergency services should initiate immediate emergency contact and evaluation.',
               },
             },
             escalation_ticket: {
@@ -518,16 +518,16 @@ export default function DashboardPage() {
               patient_id: patientId,
               patient_name: `${currentPatient.first_name} ${currentPatient.last_name}`,
               risk_level: 'CRITICAL',
-              triggered_rule: 'RULE-SYMP-CHEST (Chest Pain)',
+              triggered_rule: 'RULE-SYMP-CHEST-PAIN (Chest pain/pressure description)',
               status: 'OPEN',
               assigned_clinician: 'On-Call Surgical Fellow',
               draft_sbar: {
                 disclaimer:
                   '⚠️ AI-GENERATED DRAFT — REQUIRES HEALTHCARE PROFESSIONAL CLINICAL REVIEW AND VALIDATION BEFORE ACTION',
-                situation: 'Triggered Safety Rule RULE-SYMP-CHEST: acute chest distress reported.',
+                situation: 'Safety Rule Triggered: RULE-SYMP-CHEST-PAIN. Observed Reported Symptom: Chest pain/pressure description (Threshold: Reported acute chest pain or radiating discomfort).',
                 background: `Patient ${patientId} (${currentPatient.first_name} ${currentPatient.last_name}), ${currentPatient.age}yo ${currentPatient.gender} on post-discharge Day 2.`,
-                assessment: 'Deterministic safety trigger requiring immediate emergency evaluation. The system does not determine the underlying medical cause.',
-                recommendation: 'Dispatch 911 emergency services; alert on-call clinical team.',
+                assessment: 'Severe chest pain is a deterministic high-priority safety trigger requiring immediate emergency evaluation. The system does not determine the underlying medical cause.',
+                recommendation: 'PLEASE CALL 911 IMMEDIATELY. Dispatch emergency services; alert on-call clinical team.',
                 generated_at: new Date().toISOString(),
               },
             },
@@ -1508,10 +1508,146 @@ Follow-Up: Outpatient clinic appointment in 10 days with Dr. Jenkins at (555) 23
       weight_gain_24h_lbs: customWeightGain ? parseFloat(customWeightGain) : undefined,
     };
 
+    const currentPatient = SYNTHETIC_PATIENTS[selectedPatientId] || SYNTHETIC_PATIENTS['PT-CABG-001'];
+    const currentProfile = SYNTHETIC_DISCHARGE_PROFILES[selectedPatientId] || SYNTHETIC_DISCHARGE_PROFILES['PT-CABG-001'];
+
+    const evaluateClientSideDeterministicSafety = (report: SymptomReport, reasonMsg: string) => {
+      setBackendOnline(false);
+      setApiError(`${reasonMsg}. Deterministic safety engine evaluated locally.`);
+
+      const lower = (report.symptom_description || '').toLowerCase();
+      const hasChestKeyword = ['chest', 'substernal', 'breastbone', 'precordial'].some((k) => lower.includes(k));
+      const hasDistress = ['pain', 'pressure', 'tight', 'crush', 'heav', 'discomfort', 'squeez', 'ache', 'aching', 'hurt', 'burn'].some((s) => lower.includes(s));
+      const hasCardiacRedFlag = ['crushing', 'radiating to jaw', 'radiating to arm', 'radiating to left arm', 'radiating to the jaw', 'radiating to the arm', 'radiating to the left arm', 'angina'].some((rf) => lower.includes(rf));
+      const isChestDistress = (hasChestKeyword && hasDistress) || hasCardiacRedFlag;
+
+      const isHypoxia = report.spo2 !== undefined && report.spo2 <= 90;
+      const isHypertensiveCrisis = report.systolic_bp !== undefined && report.systolic_bp >= 180;
+      const isSevereHypotension = report.systolic_bp !== undefined && report.systolic_bp <= 85;
+      const isHighFever = report.measured_temp !== undefined && report.measured_temp >= 101.5;
+      const isSevereDiastolic = report.diastolic_bp !== undefined && report.diastolic_bp >= 110;
+      const isTachycardia = report.heart_rate !== undefined && report.heart_rate >= 130;
+      const isBradycardia = report.heart_rate !== undefined && report.heart_rate <= 45;
+      const isRapidWeight = report.weight_gain_24h_lbs !== undefined && report.weight_gain_24h_lbs >= 3.0;
+
+      let riskLevel: RiskLevel = 'LOW';
+      let triggeredRule: string | undefined = undefined;
+      let clinicalNote = 'Vitals within normal limits. Recovery proceeding as expected.';
+      let directive = 'Continue resting and following your daily discharge recovery tasks. If your discomfort increases, please log it again.';
+      let route: string | null = 'FOLLOW_UP_AGENT';
+
+      if (isChestDistress) {
+        riskLevel = 'CRITICAL';
+        triggeredRule = 'RULE-SYMP-CHEST-PAIN (Chest pain/pressure description)';
+        clinicalNote = 'Severe chest pain is a deterministic high-priority safety trigger requiring immediate emergency evaluation. The system does not determine the underlying medical cause.';
+        directive = 'PLEASE CALL 911 IMMEDIATELY. Stop all physical activity and seek emergency medical evaluation. Do not drive yourself.';
+        route = 'ESCALATION_COORDINATION_AGENT';
+      } else if (isHypoxia) {
+        riskLevel = 'CRITICAL';
+        triggeredRule = `RULE-VITAL-SPO2-HYPOXIA (${report.spo2}% <= 90%)`;
+        clinicalNote = 'Oxygen saturation fell to or below deterministic safety threshold. Hypoxia requires immediate emergency medical evaluation. The system does not determine the underlying medical cause.';
+        directive = 'Call 911 or proceed to the nearest emergency department immediately.';
+        route = 'ESCALATION_COORDINATION_AGENT';
+      } else if (isHypertensiveCrisis) {
+        riskLevel = 'CRITICAL';
+        triggeredRule = `RULE-VITAL-BP-SYS-CRIT (${report.systolic_bp} mmHg >= 180 mmHg)`;
+        clinicalNote = 'Hypertensive crisis threshold reached. Severe blood pressure deviation requiring urgent medical evaluation. The system does not determine the underlying medical cause.';
+        directive = 'Please seek immediate emergency medical care or call 911 if accompanied by chest discomfort, shortness of breath, or headache.';
+        route = 'ESCALATION_COORDINATION_AGENT';
+      } else if (isHighFever) {
+        riskLevel = 'HIGH';
+        triggeredRule = `RULE-VITAL-TEMP-HIGH (${report.measured_temp}°F >= 101.5°F)`;
+        clinicalNote = 'Reported temperature exceeds the deterministic safety threshold. This is a high-priority safety trigger requiring prompt clinical evaluation. The system does not determine the underlying medical cause.';
+        directive = 'Alerting your clinical care team now. Please rest quietly while your care team is notified for clinical triage evaluation.';
+        route = 'ESCALATION_COORDINATION_AGENT';
+      } else if (isSevereHypotension) {
+        riskLevel = 'HIGH';
+        triggeredRule = `RULE-VITAL-BP-SYS-HYPO (${report.systolic_bp} mmHg <= 85 mmHg)`;
+        clinicalNote = 'Severe hypotension threshold reached. Low blood pressure requires prompt clinical evaluation. The system does not determine the underlying medical cause.';
+        directive = 'Please sit or lie down immediately and contact your clinical care team emergency triage line.';
+        route = 'ESCALATION_COORDINATION_AGENT';
+      } else if (isSevereDiastolic) {
+        riskLevel = 'HIGH';
+        triggeredRule = `RULE-VITAL-BP-DIA-CRIT (${report.diastolic_bp} mmHg >= 110 mmHg)`;
+        clinicalNote = 'Critically elevated diastolic pressure requiring prompt clinical evaluation. The system does not determine the underlying medical cause.';
+        directive = 'Contact your clinical care team triage immediately.';
+        route = 'ESCALATION_COORDINATION_AGENT';
+      } else if (isTachycardia || isBradycardia) {
+        riskLevel = 'HIGH';
+        triggeredRule = isTachycardia ? `RULE-VITAL-HR-TACHY (${report.heart_rate} bpm >= 130 bpm)` : `RULE-VITAL-HR-BRADY (${report.heart_rate} bpm <= 45 bpm)`;
+        clinicalNote = 'Heart rate exceeds deterministic safety threshold requiring prompt clinical evaluation. The system does not determine the underlying medical cause.';
+        directive = 'Rest quietly and contact your care team immediately for clinical evaluation.';
+        route = 'ESCALATION_COORDINATION_AGENT';
+      } else if (isRapidWeight) {
+        riskLevel = 'HIGH';
+        triggeredRule = `RULE-CHF-RAPID-WEIGHT (+${report.weight_gain_24h_lbs} lbs >= 3.0 lbs)`;
+        clinicalNote = '24-hour weight gain exceeds the deterministic safety threshold of 3.0 lbs. Prompt clinical review by the care team is required.';
+        directive = 'Contact your care team triage nurse today for clinical guidance and symptom evaluation.';
+        route = 'ESCALATION_COORDINATION_AGENT';
+      } else if (report.severity_score > 4) {
+        riskLevel = 'MODERATE';
+        clinicalNote = 'Reported symptoms indicate moderate discomfort. No immediate deterministic safety thresholds breached.';
+        directive = 'Continue resting and following your daily discharge care checklist. If your discomfort increases, report it immediately.';
+        route = 'FOLLOW_UP_AGENT';
+      }
+
+      const isEscalation = riskLevel === 'HIGH' || riskLevel === 'CRITICAL';
+      const fallbackResult: WorkflowResult = {
+        patient_id: selectedPatientId,
+        patient_name: `${currentPatient.first_name} ${currentPatient.last_name}`,
+        primary_diagnosis: currentProfile.primary_diagnosis,
+        discharge_profile: currentProfile,
+        workflow_route: route,
+        status: 'COMPLETED',
+        symptom_report: report,
+        risk_assessment: {
+          patient_id: selectedPatientId,
+          risk_level: riskLevel,
+          deterministic_rule_triggered: triggeredRule,
+          clinical_reasoning: clinicalNote,
+          immediate_patient_directive: directive,
+          care_team_action_required: isEscalation,
+          sbar: isEscalation
+            ? {
+                situation: `Safety Rule Triggered: ${triggeredRule || 'Clinical alert'}.`,
+                background: `Patient ${selectedPatientId} (${currentPatient.first_name} ${currentPatient.last_name}) reported: '${report.symptom_description}' (Severity ${report.severity_score}/10).`,
+                assessment: clinicalNote,
+                recommendation: isChestDistress ? 'PLEASE CALL 911 IMMEDIATELY. Urgent emergency evaluation required.' : 'Clinical triage review required.',
+              }
+            : undefined,
+        },
+        escalation_ticket: isEscalation
+          ? {
+              ticket_id: `ESC-${Date.now().toString().slice(-6)}`,
+              patient_id: selectedPatientId,
+              patient_name: `${currentPatient.first_name} ${currentPatient.last_name}`,
+              risk_level: riskLevel as 'HIGH' | 'CRITICAL',
+              triggered_rule: triggeredRule || 'Clinical threshold breached',
+              status: 'OPEN',
+              assigned_clinician: 'On-Call Clinical Triage',
+              draft_sbar: {
+                disclaimer: '⚠️ AI-GENERATED DRAFT — REQUIRES HEALTHCARE PROFESSIONAL CLINICAL REVIEW AND VALIDATION BEFORE ACTION',
+                situation: `Safety Rule Triggered: ${triggeredRule || 'Clinical alert'}.`,
+                background: `Patient ${selectedPatientId} (${currentPatient.first_name} ${currentPatient.last_name}) reported: '${report.symptom_description}' (Severity ${report.severity_score}/10).`,
+                assessment: clinicalNote,
+                recommendation: isChestDistress ? 'PLEASE CALL 911 IMMEDIATELY. Dispatch emergency services; alert on-call clinical team.' : 'Clinical triage review required.',
+                generated_at: new Date().toISOString(),
+              },
+            }
+          : undefined,
+      };
+
+      setWorkflowState(fallbackResult);
+    };
+
     try {
       const response = await fetch(`${API_BASE_URL}/api/v1/workflow/${selectedPatientId}`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
+        headers: {
+          'Content-Type': 'application/json',
+          Accept: 'application/json',
+          ...(authSessionToken ? { Authorization: `Bearer ${authSessionToken}` } : {}),
+        },
         body: JSON.stringify(symptomReport),
       });
 
@@ -1524,11 +1660,11 @@ Follow-Up: Outpatient clinic appointment in 10 days with Dr. Jenkins at (555) 23
         setBackendOnline(true);
         fetchTimeline(selectedPatientId);
       } else {
-        setApiError(`Workflow evaluation returned HTTP ${response.status}`);
+        evaluateClientSideDeterministicSafety(symptomReport, `Backend returned HTTP ${response.status}`);
       }
     } catch (err: unknown) {
       const message = err instanceof Error ? err.message : 'Network error';
-      setApiError(`Could not submit custom telemetry: ${message}`);
+      evaluateClientSideDeterministicSafety(symptomReport, `Backend unreachable (${message})`);
     } finally {
       setLoading(false);
     }
