@@ -14,20 +14,27 @@ from app.schemas.clinical import (
     FollowUpAppointment,
     MedicationItem,
     PatientBase,
+    TimingType,
 )
 
 # Canonical frequency regex ordered from most specific to least specific
 FREQ_PATTERN = re.compile(
     r"\b("
+    r"(?:at\s+)?\d{1,2}(?::[0-5]\d)?\s*(?:am|pm)(?:\s+and\s+\d{1,2}(?::[0-5]\d)?\s*(?:am|pm))?|"
     r"three\s+times\s+(?:daily|a\s+day)(?:\s+with\s+meals?)?|"
-    r"twice\s+(?:daily|a\s+day)(?:\s+with\s+meals?)?|"
+    r"twice\s+(?:daily|a\s+day)(?:,\s*morning\s+and\s+(?:night|evening))?|"
     r"four\s+times\s+(?:daily|a\s+day)(?:\s+with\s+meals?)?|"
-    r"once\s+(?:daily|a\s+day)(?:\s+with\s+meals?)?|"
+    r"morning\s+and\s+(?:night|evening)|"
+    r"once\s+(?:daily|a\s+day)(?:\s+(?:with\s+breakfast|in\s+the\s+morning|at\s+bedtime|with\s+meals?))?|"
     r"\d+\s+times\s+(?:daily|a\s+day)(?:\s+with\s+meals?)?|"
-    r"every\s+\d+\s+hours?|"
+    r"every\s+\d+\s+hours?(?:\s+as\s+needed(?:\s+for\s+[\w\s]+)?)?|"
     r"as\s+needed(?:\s+for\s+[\w\s]+)?|"
+    r"(?:with|after|before)\s+breakfast|"
+    r"(?:with|after|before)\s+lunch|"
+    r"(?:with|after|before)\s+dinner|"
     r"with\s+meals?|"
-    r"at\s+bedtime|"
+    r"at\s+bedtime|before\s+sleep|"
+    r"in\s+the\s+morning|"
     r"daily(?:\s+with\s+meals?)?|"
     r"q\d+h|"
     r"bid|b\.i\.d\.|tid|t\.i\.d\.|qid|q\.i\.d\.|prn|p\.r\.n\.|qhs|q\.h\.s\."
@@ -52,6 +59,89 @@ ROUTE_PATTERN = re.compile(
     r")\b",
     re.IGNORECASE
 )
+
+
+def normalize_clock_time(time_str: str) -> Optional[str]:
+    """Convert clock time formats ('5 PM', '9:00 AM', '17:00') to standardized 24-hour HH:MM."""
+    time_str = time_str.strip().lower()
+    m24 = re.match(r"^([01]?\d|2[0-3]):([0-5]\d)$", time_str)
+    if m24:
+        return f"{int(m24.group(1)):02d}:{m24.group(2)}"
+    m12 = re.match(r"^(\d{1,2})(?::([0-5]\d))?\s*(am|pm)$", time_str)
+    if m12:
+        hours = int(m12.group(1))
+        minutes = m12.group(2) or "00"
+        period = m12.group(3)
+        if period == "pm" and hours < 12:
+            hours += 12
+        elif period == "am" and hours == 12:
+            hours = 0
+        return f"{hours:02d}:{minutes}"
+    return None
+
+
+def parse_timing_from_instruction(text: str) -> Tuple[TimingType, List[str]]:
+    """
+    Extracts structured timing strictly grounded in documented discharge instructions.
+    Never hallucinates clock times (e.g. 08:00, 09:00, 20:00) when none are documented.
+    """
+    text_lower = text.lower()
+
+    # 1. Explicit clock times (e.g., 'at 5 PM', 'at 9:00 AM and 9:00 PM', 'take at 17:00')
+    clock_matches = re.findall(
+        r"\b(\d{1,2}(?::[0-5]\d)?\s*(?:am|pm)|\b(?:[01]?\d|2[0-3]):[0-5]\d)\b",
+        text_lower,
+        re.IGNORECASE
+    )
+    if clock_matches:
+        normalized: List[str] = []
+        for cm in clock_matches:
+            nt = normalize_clock_time(cm)
+            if nt and nt not in normalized:
+                normalized.append(nt)
+        if normalized:
+            normalized.sort()
+            return TimingType.CLOCK_TIME, normalized
+
+    # 2. PRN / As needed (e.g., 'as needed for pain', 'PRN')
+    if re.search(r"\b(as\s+needed(?:\s+for\s+[\w\s]+)?|p\.?r\.?n\.?(?:\s+for\s+[\w\s]+)?)\b", text_lower):
+        return TimingType.PRN_AS_NEEDED, ["PRN (As needed)"]
+
+    # 3. Intervals (e.g., 'every 8 hours', 'q8h', 'every 12 hours')
+    interval_match = re.search(r"\b(?:every\s+(\d+)\s+hours?|q\s*(\d+)\s*h)\b", text_lower)
+    if interval_match:
+        hrs = interval_match.group(1) or interval_match.group(2)
+        return TimingType.INTERVAL, [f"Every {hrs} hours"]
+
+    # 4. Morning and Night / Morning and Evening combinations
+    if re.search(r"\b(morning\s+and\s+(?:night|evening)|morning\s*[\/\&]\s*(?:night|evening))\b", text_lower):
+        return TimingType.ROUTINE_WINDOW, ["Morning", "Night"]
+
+    # 5. Specific meal / bedtime routine anchors (Preserves documented words; NO invented times)
+    if re.search(r"\b(at\s+bedtime|bedtime|before\s+(?:sleep|bed)|qhs|q\.h\.s\.)\b", text_lower):
+        return TimingType.ROUTINE_WINDOW, ["At bedtime"]
+    if re.search(r"\b((?:with|after|before)\s+breakfast)\b", text_lower):
+        return TimingType.ROUTINE_WINDOW, ["Morning (with breakfast)"]
+    if re.search(r"\b((?:with|after|before)\s+lunch|midday|noon)\b", text_lower):
+        return TimingType.ROUTINE_WINDOW, ["Midday (with lunch)"]
+    if re.search(r"\b((?:with|after|before)\s+dinner|(?:in\s+the\s+)?evening)\b", text_lower):
+        return TimingType.ROUTINE_WINDOW, ["Evening (with dinner)"]
+    if re.search(r"\b((?:in\s+the\s+)?morning)\b", text_lower):
+        return TimingType.ROUTINE_WINDOW, ["Morning"]
+    if re.search(r"\b(with\s+(?:meals?|food))\b", text_lower):
+        return TimingType.ROUTINE_WINDOW, ["With meals"]
+
+    # 6. Frequency without specific routine anchor
+    if re.search(r"\b(twice\s+(?:daily|a\s+day)|bid|b\.i\.d\.)\b", text_lower):
+        return TimingType.ROUTINE_WINDOW, ["Morning", "Evening"]
+    if re.search(r"\b(three\s+times\s+(?:daily|a\s+day)|tid|t\.i\.d\.)\b", text_lower):
+        return TimingType.ROUTINE_WINDOW, ["Morning", "Midday", "Evening"]
+    if re.search(r"\b(four\s+times\s+(?:daily|a\s+day)|qid|q\.i\.d\.)\b", text_lower):
+        return TimingType.ROUTINE_WINDOW, ["Morning", "Midday", "Evening", "At bedtime"]
+    if re.search(r"\b(once\s+(?:daily|a\s+day)|daily|qday)\b", text_lower):
+        return TimingType.ROUTINE_WINDOW, ["Daily"]
+
+    return TimingType.UNSPECIFIED, ["As directed"]
 
 
 class DischargeUnderstandingAgent:
@@ -258,21 +348,8 @@ class DischargeUnderstandingAgent:
             name_cand = re.sub(r"\s+", " ", name_cand).strip()
             drug_name = name_cand if name_cand else clean_ml
 
-            # Build schedule slots only if frequency is determinable
-            freq_lower = frequency.lower()
-            schedule_slots: List[str] = []
-            if "three times" in freq_lower or "tid" in freq_lower:
-                schedule_slots = ["08:00", "14:00", "20:00"]
-            elif "twice" in freq_lower or "bid" in freq_lower:
-                schedule_slots = ["08:00", "20:00"]
-            elif "four times" in freq_lower or "qid" in freq_lower:
-                schedule_slots = ["08:00", "12:00", "16:00", "20:00"]
-            elif "once" in freq_lower or "daily" in freq_lower:
-                schedule_slots = ["09:00"]
-            elif "every 6" in freq_lower or "q6h" in freq_lower:
-                schedule_slots = ["06:00", "12:00", "18:00", "00:00"]
-            elif "every 8" in freq_lower or "q8h" in freq_lower:
-                schedule_slots = ["08:00", "16:00", "00:00"]
+            # Build schedule slots and timing type strictly from documented instruction
+            timing_type, schedule_slots = parse_timing_from_instruction(clean_ml)
 
             medications.append(MedicationItem(
                 drug_name=drug_name,
@@ -280,6 +357,8 @@ class DischargeUnderstandingAgent:
                 route=route,
                 frequency=frequency,
                 schedule_slots=schedule_slots,
+                timing_type=timing_type,
+                documented_instruction=clean_ml,
                 indication="Documented discharge medication" if primary_diagnosis == "Not specified" else f"Documented therapy for {primary_diagnosis}"
             ))
 

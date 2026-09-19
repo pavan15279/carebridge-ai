@@ -20,6 +20,13 @@ class TaskCategory(str, Enum):
     HYDRATION_DIET = "HYDRATION_DIET"
     CHECK_IN = "CHECK_IN"
 
+class TimingType(str, Enum):
+    CLOCK_TIME = "CLOCK_TIME"
+    ROUTINE_WINDOW = "ROUTINE_WINDOW"
+    INTERVAL = "INTERVAL"
+    PRN_AS_NEEDED = "PRN_AS_NEEDED"
+    UNSPECIFIED = "UNSPECIFIED"
+
 class TaskStatus(str, Enum):
     PENDING = "PENDING"
     COMPLETED = "COMPLETED"
@@ -52,7 +59,9 @@ class MedicationItem(BaseModel):
     dosage: str
     route: str = "Not specified"
     frequency: str
-    schedule_slots: List[str] = Field(default_factory=list, description="e.g. ['08:00', '20:00']")
+    schedule_slots: List[str] = Field(default_factory=list, description="e.g. ['17:00'] or ['Morning (with breakfast)']")
+    timing_type: Optional[TimingType] = None
+    documented_instruction: Optional[str] = None
     indication: str
     is_discontinued: bool = False
     warning: Optional[str] = None
@@ -93,6 +102,8 @@ class CareTask(BaseModel):
     title: str
     description: str
     scheduled_time: str
+    timing_type: TimingType = TimingType.ROUTINE_WINDOW
+    documented_instruction: Optional[str] = None
     status: TaskStatus = TaskStatus.PENDING
     completed_at: Optional[datetime] = None
     notes: Optional[str] = None

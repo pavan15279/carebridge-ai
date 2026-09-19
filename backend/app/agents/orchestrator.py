@@ -31,6 +31,7 @@ from app.schemas.clinical import (
     SymptomReport,
     TaskCategory,
     TaskStatus,
+    TimingType,
 )
 from app.agents.discharge_understanding import DischargeUnderstandingAgent
 from app.agents.recovery_planning import RecoveryPlanningAgent
@@ -494,7 +495,9 @@ class CareBridgeOrchestrator:
                     category=TaskCategory.CHECK_IN,
                     title="Daily Recovery Check-In",
                     description="Confirm resting comfort and log overall recovery progress.",
-                    scheduled_time="09:00",
+                    scheduled_time="Morning",
+                    timing_type=TimingType.ROUTINE_WINDOW,
+                    documented_instruction="Neutral daily post-discharge recovery check-in",
                     status=TaskStatus.PENDING
                 ),
                 CareTask(
@@ -504,7 +507,9 @@ class CareBridgeOrchestrator:
                     category=TaskCategory.VITAL_CHECK,
                     title="Record Available Vitals",
                     description="Log resting vitals and temperature if monitoring equipment is available.",
-                    scheduled_time="12:00",
+                    scheduled_time="Midday",
+                    timing_type=TimingType.ROUTINE_WINDOW,
+                    documented_instruction="Record available resting vitals if equipment is accessible",
                     status=TaskStatus.PENDING
                 ),
                 CareTask(
@@ -514,7 +519,9 @@ class CareBridgeOrchestrator:
                     category=TaskCategory.CHECK_IN,
                     title="Review Documented Instructions",
                     description="Review discharge paperwork and report any new or worsening symptoms.",
-                    scheduled_time="15:00",
+                    scheduled_time="Afternoon",
+                    timing_type=TimingType.ROUTINE_WINDOW,
+                    documented_instruction="Review clinical instructions and verify comfort",
                     status=TaskStatus.PENDING
                 ),
                 CareTask(
@@ -524,7 +531,9 @@ class CareBridgeOrchestrator:
                     category=TaskCategory.CHECK_IN,
                     title="Confirm Follow-Up Information",
                     description="Verify upcoming clinical outpatient appointments and contact information.",
-                    scheduled_time="18:00",
+                    scheduled_time="Evening",
+                    timing_type=TimingType.ROUTINE_WINDOW,
+                    documented_instruction="Verify follow-up clinical provider contact details",
                     status=TaskStatus.PENDING
                 )
             ]

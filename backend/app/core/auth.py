@@ -94,7 +94,8 @@ def _neutral_onboarding_tasks(patient_id: str) -> list:
                 "your discharge paperwork so your care team can set up a personalised "
                 "recovery plan."
             ),
-            "scheduled_time": "09:00",
+            "scheduled_time": "Morning",
+            "timing_type": "ROUTINE_WINDOW",
             "is_critical": False,
             "status": "PENDING",
         },
@@ -105,7 +106,8 @@ def _neutral_onboarding_tasks(patient_id: str) -> list:
             "category": "VITAL_CHECK",
             "title": "Record Available Vitals",
             "description": "Record any available vital measurements so they can be reviewed when appropriate.",
-            "scheduled_time": "12:00",
+            "scheduled_time": "Midday",
+            "timing_type": "ROUTINE_WINDOW",
             "is_critical": False,
             "status": "PENDING",
         },
@@ -120,7 +122,8 @@ def _neutral_onboarding_tasks(patient_id: str) -> list:
                 "hospital discharge summary (PDF or TXT). This allows CareBridge AI "
                 "to generate your personalised recovery roadmap."
             ),
-            "scheduled_time": "15:00",
+            "scheduled_time": "Evening",
+            "timing_type": "ROUTINE_WINDOW",
             "is_critical": False,
             "status": "PENDING",
         },

@@ -38,8 +38,19 @@ import {
   UserPlus,
   LogOut,
   Lock,
-  Mail
+  Mail,
+  Bell,
+  BellRing,
+  BellOff
 } from 'lucide-react';
+
+import {
+  ActiveToastNotification,
+  calculateTaskDueStatus,
+  requestNotificationPermission,
+  sendBrowserNotification,
+  formatReminderContent,
+} from '../lib/reminderEngine';
 
 import {
   PatientBase,
@@ -169,6 +180,12 @@ export default function DashboardPage() {
   const [signupConfirmPassword, setSignupConfirmPassword] = useState<string>('');
   const [signupLoading, setSignupLoading] = useState<boolean>(false);
   const [signupError, setSignupError] = useState<string | null>(null);
+
+  // ── Reminder Engine State ──────────────────────────────────────────────────
+  const [notificationPermission, setNotificationPermission] = useState<NotificationPermission>('default');
+  const [activeToasts, setActiveToasts] = useState<ActiveToastNotification[]>([]);
+  const [notifiedTaskIds, setNotifiedTaskIds] = useState<string[]>([]);
+  const [demoReminderCountdown, setDemoReminderCountdown] = useState<number | null>(null);
 
   const [selectedPatientId, setSelectedPatientId] = useState<string>('PT-CABG-001');
   const [patientOptions, setPatientOptions] = useState<PatientOption[]>(DEFAULT_PATIENT_OPTIONS);
@@ -807,6 +824,126 @@ Follow-Up: Outpatient clinic appointment in 10 days with Dr. Jenkins at (555) 23
     } finally {
       setReviewLoading(false);
     }
+  };
+
+  // ── Reminder Engine Effects & Handlers ──────────────────────────────────────
+  useEffect(() => {
+    if (typeof window !== 'undefined' && 'Notification' in window) {
+      setNotificationPermission(Notification.permission);
+    }
+  }, []);
+
+  const handleEnableNotifications = async () => {
+    const perm = await requestNotificationPermission();
+    setNotificationPermission(perm);
+    if (perm === 'granted') {
+      sendBrowserNotification(
+        'CareBridge AI Reminders Enabled',
+        'You will receive browser notifications when your scheduled recovery tasks become due.'
+      );
+    }
+  };
+
+  const handleTriggerDemoReminder = () => {
+    if (demoReminderCountdown !== null) return;
+    setDemoReminderCountdown(60);
+  };
+
+  // Demo 1-minute reminder countdown effect (Requirement 15)
+  useEffect(() => {
+    if (demoReminderCountdown === null) return;
+
+    if (demoReminderCountdown > 0) {
+      const timer = setTimeout(() => {
+        setDemoReminderCountdown((prev) => (prev !== null && prev > 0 ? prev - 1 : null));
+      }, 1000);
+      return () => clearTimeout(timer);
+    }
+
+    if (demoReminderCountdown === 0) {
+      const targetTask = tasks.find((t) => t.status === 'PENDING') || tasks[0] || {
+        task_id: 'TASK-DEMO-01',
+        patient_id: selectedPatientId,
+        day_number: 2,
+        category: 'CHECK_IN' as const,
+        title: 'Daily Recovery Check-In',
+        description: 'Verify recovery status and record today’s health updates.',
+        scheduled_time: 'Now',
+        status: 'PENDING' as const,
+      };
+
+      const content = formatReminderContent(targetTask, true);
+      const newToast: ActiveToastNotification = {
+        id: `toast_demo_${Date.now()}`,
+        task_id: targetTask.task_id,
+        title: content.title,
+        message: content.message,
+        scheduled_time: targetTask.scheduled_time,
+        category: targetTask.category,
+        is_medication: targetTask.category === 'MEDICATION',
+        timestamp: Date.now(),
+        is_demo: true,
+      };
+
+      setActiveToasts((prev) => [newToast, ...prev.slice(0, 4)]);
+      sendBrowserNotification(content.title, content.message, `demo-${targetTask.task_id}`);
+      setDemoReminderCountdown(null);
+    }
+  }, [demoReminderCountdown, tasks, selectedPatientId]);
+
+  // Periodic Reminder Engine Interval (runs every 15 seconds)
+  useEffect(() => {
+    if (!isAuthenticated || tasks.length === 0) return;
+
+    const checkReminders = () => {
+      const now = new Date();
+      tasks.forEach((task) => {
+        // Requirement 10: If task is COMPLETED, do not remind
+        if (task.status === 'COMPLETED') return;
+
+        const dueStatus = calculateTaskDueStatus(
+          task.scheduled_time,
+          task.status,
+          now,
+          task.timing_type,
+          task.category
+        );
+        if (dueStatus === 'DUE' && !notifiedTaskIds.includes(task.task_id)) {
+          setNotifiedTaskIds((prev) => [...prev, task.task_id]);
+
+          const content = formatReminderContent(task, false);
+          const newToast: ActiveToastNotification = {
+            id: `toast_${task.task_id}_${Date.now()}`,
+            task_id: task.task_id,
+            title: content.title,
+            message: content.message,
+            scheduled_time: task.scheduled_time,
+            category: task.category,
+            timing_type: task.timing_type,
+            documented_instruction: task.documented_instruction,
+            is_medication: task.category === 'MEDICATION',
+            timestamp: Date.now(),
+            is_demo: false,
+          };
+
+          setActiveToasts((prev) => [newToast, ...prev.slice(0, 4)]);
+          sendBrowserNotification(content.title, content.message, task.task_id);
+        }
+      });
+    };
+
+    checkReminders();
+    const interval = setInterval(checkReminders, 15000);
+    return () => clearInterval(interval);
+  }, [isAuthenticated, tasks, notifiedTaskIds]);
+
+  const handleDismissToast = (id: string) => {
+    setActiveToasts((prev) => prev.filter((t) => t.id !== id));
+  };
+
+  const handleCompleteFromToast = async (taskId: string, toastId: string) => {
+    handleDismissToast(toastId);
+    await handleTaskAction(taskId, 'complete');
   };
 
   // Upload unstructured discharge summary paperwork
@@ -1807,6 +1944,11 @@ Follow-Up: Outpatient clinic appointment in 10 days with Dr. Jenkins at (555) 23
           <span>Version 1.0.0-MVP</span>
           <span>•</span>
           <span className="font-mono text-teal-400">Precedence Locked</span>
+          <span>•</span>
+          <span className="flex items-center space-x-1.5 font-mono text-emerald-400 text-[11px] px-2 py-0.5 rounded bg-emerald-950/60 border border-emerald-800/60">
+            <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
+            <span>Reminder Engine: Active</span>
+          </span>
         </div>
       </div>
 
@@ -2861,6 +3003,228 @@ Follow-Up: Outpatient clinic appointment in 10 days with Dr. Jenkins at (555) 23
               </div>
             </section>
 
+            {/* ── Today's Reminders Section (Requirements 3, 4, 14, 15) ──────── */}
+            <section aria-label="Today's Reminders" className="bg-white border border-slate-200 rounded-xl p-5 shadow-sm">
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between pb-3 border-b border-slate-100 gap-2.5">
+                <div>
+                  <h3 className="text-sm font-bold text-slate-900 flex items-center space-x-2">
+                    <BellRing className="w-4 h-4 text-teal-600" />
+                    <span>Today&apos;s Recovery Reminders</span>
+                  </h3>
+                  <p className="text-xs text-slate-500 mt-0.5">
+                    Active recovery check-ins &amp; scheduled task alerts for {patient.first_name} {patient.last_name}.
+                  </p>
+                </div>
+
+                {/* Controls & Engine Status Indicator */}
+                <div className="flex flex-wrap items-center gap-2 justify-end">
+                  {/* Indicator Badge (Requirement 14) */}
+                  <span className="flex items-center space-x-1.5 px-2.5 py-1 rounded-full bg-emerald-50 text-emerald-700 border border-emerald-200 text-xs font-semibold">
+                    <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
+                    <span>Reminder Engine: Active</span>
+                  </span>
+
+                  {/* Browser Notification Permission Button (Requirement 6) */}
+                  {notificationPermission !== 'granted' ? (
+                    <button
+                      type="button"
+                      onClick={handleEnableNotifications}
+                      className="px-2.5 py-1 text-xs font-semibold rounded-lg bg-teal-600 hover:bg-teal-700 text-white flex items-center space-x-1 transition shadow-sm cursor-pointer"
+                      title="Enable browser notifications for due recovery tasks"
+                    >
+                      <Bell className="w-3.5 h-3.5" />
+                      <span>Enable Reminders</span>
+                    </button>
+                  ) : (
+                    <span className="px-2.5 py-1 rounded-full bg-slate-100 text-slate-700 border border-slate-200 text-xs font-medium flex items-center space-x-1">
+                      <Check className="w-3 h-3 text-emerald-600" />
+                      <span>Browser Alerts On</span>
+                    </span>
+                  )}
+
+                  {/* Demo 1-minute reminder capability (Requirement 15) */}
+                  <button
+                    type="button"
+                    onClick={handleTriggerDemoReminder}
+                    disabled={demoReminderCountdown !== null}
+                    className="px-2.5 py-1 text-xs font-semibold rounded-lg border border-teal-300 text-teal-700 bg-teal-50 hover:bg-teal-100 flex items-center space-x-1 transition cursor-pointer disabled:opacity-50"
+                    title="Test the in-app and browser notification loop in 1 minute (Demo mode)"
+                  >
+                    <Clock3 className="w-3.5 h-3.5 text-teal-600" />
+                    <span>
+                      {demoReminderCountdown !== null
+                        ? `⏱ Demo in ${demoReminderCountdown}s`
+                        : '⏱ Remind in 1 min (Demo)'}
+                    </span>
+                  </button>
+                </div>
+              </div>
+
+              {/* Reminders Items List */}
+              <div className="mt-3 space-y-2.5">
+                {tasks.length > 0 ? (
+                  tasks.map((task) => {
+                    const dueStatus = calculateTaskDueStatus(
+                      task.scheduled_time,
+                      task.status,
+                      undefined,
+                      task.timing_type,
+                      task.category
+                    );
+                    const isDone = task.status === 'COMPLETED';
+                    const isDue = dueStatus === 'DUE' && !isDone && task.status !== 'MISSED';
+                    const isUpcoming = dueStatus === 'UPCOMING' && !isDone && task.status !== 'MISSED' && task.status !== 'SNOOZED';
+                    const isPRN = dueStatus === 'AVAILABLE_AS_NEEDED' && !isDone && task.status !== 'MISSED';
+                    const isMissed = task.status === 'MISSED';
+                    const isSnoozed = task.status === 'SNOOZED';
+                    const isMed = task.category === 'MEDICATION';
+
+                    return (
+                      <div
+                        key={`reminder-${task.task_id}`}
+                        className={`p-3 rounded-lg border transition-all flex flex-col sm:flex-row sm:items-center justify-between gap-2.5 ${
+                          isDue
+                            ? 'bg-amber-50/80 border-amber-300 ring-1 ring-amber-400/50 shadow-sm'
+                            : isDone
+                            ? 'bg-emerald-50/40 border-emerald-200 text-slate-700'
+                            : isMissed
+                            ? 'bg-rose-50/40 border-rose-200 text-slate-700'
+                            : isSnoozed
+                            ? 'bg-amber-50/40 border-amber-200 text-slate-800'
+                            : 'bg-slate-50 border-slate-200 text-slate-800'
+                        }`}
+                      >
+                        {/* Task information */}
+                        <div className="flex items-start space-x-2.5 flex-1 min-w-0">
+                          <div className={`p-1.5 rounded-lg shrink-0 mt-0.5 ${
+                            isDone
+                              ? 'bg-emerald-600 text-white'
+                              : isDue
+                              ? 'bg-amber-500 text-white animate-pulse'
+                              : isMissed
+                              ? 'bg-rose-500 text-white'
+                              : isPRN
+                              ? 'bg-blue-600 text-white'
+                              : 'bg-slate-200 text-slate-600'
+                          }`}>
+                            {isDone ? (
+                              <Check className="w-3.5 h-3.5" />
+                            ) : isDue ? (
+                              <BellRing className="w-3.5 h-3.5" />
+                            ) : (
+                              <Clock className="w-3.5 h-3.5" />
+                            )}
+                          </div>
+
+                          <div className="flex-1 min-w-0">
+                            <div className="flex flex-wrap items-center gap-1.5">
+                              <span className={`text-xs font-bold ${isDone ? 'line-through text-slate-500' : 'text-slate-900'}`}>
+                                {task.title}
+                              </span>
+
+                              {/* Status Badges */}
+                              {isDue && (
+                                <span className="text-[10px] font-bold px-2 py-0.5 bg-amber-100 text-amber-900 border border-amber-300 rounded-full flex items-center space-x-1">
+                                  <span className="w-1.5 h-1.5 rounded-full bg-amber-500 animate-ping" />
+                                  <span>DUE NOW</span>
+                                </span>
+                              )}
+                              {isUpcoming && (
+                                <span className="text-[10px] font-semibold px-2 py-0.5 bg-slate-100 text-slate-700 border border-slate-200 rounded-full">
+                                  UPCOMING
+                                </span>
+                              )}
+                              {isPRN && (
+                                <span className="text-[10px] font-semibold px-2 py-0.5 bg-blue-100 text-blue-800 border border-blue-200 rounded-full">
+                                  AVAILABLE AS NEEDED
+                                </span>
+                              )}
+                              {isDone && (
+                                <span className="text-[10px] font-semibold px-2 py-0.5 bg-emerald-100 text-emerald-800 border border-emerald-200 rounded-full">
+                                  COMPLETED
+                                </span>
+                              )}
+                              {isMissed && (
+                                <span className="text-[10px] font-semibold px-2 py-0.5 bg-rose-100 text-rose-800 border border-rose-200 rounded-full">
+                                  MISSED
+                                </span>
+                              )}
+                              {isSnoozed && (
+                                <span className="text-[10px] font-semibold px-2 py-0.5 bg-amber-100 text-amber-800 border border-amber-200 rounded-full">
+                                  SNOOZED
+                                </span>
+                              )}
+
+                              {task.timing_type && (
+                                <span className="text-[10px] font-mono px-1.5 py-0.2 bg-teal-50 text-teal-700 border border-teal-200 rounded">
+                                  {task.timing_type}
+                                </span>
+                              )}
+
+                              <span className="text-[10px] font-mono px-1.5 py-0.2 bg-slate-200/70 text-slate-700 rounded">
+                                {task.category}
+                              </span>
+                            </div>
+
+                            <p className={`text-xs mt-0.5 ${isDone ? 'text-slate-400' : 'text-slate-600'}`}>
+                              {task.description}
+                            </p>
+
+                            {/* Grounded documented instruction verbatim */}
+                            {task.documented_instruction && (
+                              <p className="text-[11px] text-teal-800/90 font-medium mt-1">
+                                Documented instruction: &quot;{task.documented_instruction}&quot;
+                              </p>
+                            )}
+
+                            {/* Safe medication reminder notice */}
+                            {isMed && (
+                              <p className="text-[11px] text-amber-700/90 font-medium mt-1">
+                                ℹ️ Please take medication exactly as prescribed by your physician, then confirm completion below.
+                              </p>
+                            )}
+                          </div>
+                        </div>
+
+                        {/* Action buttons & Scheduled Time */}
+                        <div className="flex items-center space-x-2 shrink-0 self-end sm:self-center">
+                          <span className="text-xs font-mono text-slate-500 flex items-center space-x-1 mr-1">
+                            <Clock className="w-3 h-3 text-slate-400" />
+                            <span>{task.scheduled_time}</span>
+                          </span>
+
+                          <button
+                            type="button"
+                            onClick={() => handleTaskAction(task.task_id, isDone ? 'miss' : 'complete')}
+                            className={`px-3 py-1.5 text-xs font-semibold rounded-lg border transition-colors shadow-sm cursor-pointer flex items-center space-x-1 ${
+                              isDone
+                                ? 'bg-emerald-600 text-white border-emerald-600 hover:bg-emerald-700'
+                                : isDue
+                                ? 'bg-teal-600 hover:bg-teal-700 text-white border-teal-600'
+                                : 'bg-white text-slate-700 border-slate-300 hover:bg-slate-50'
+                            }`}
+                          >
+                            {isDone ? (
+                              <>
+                                <Check className="w-3.5 h-3.5" />
+                                <span>Completed</span>
+                              </>
+                            ) : (
+                              <>
+                                <span>✓ {isMed ? 'Confirm & Record' : 'Mark Done'}</span>
+                              </>
+                            )}
+                          </button>
+                        </div>
+                      </div>
+                    );
+                  })
+                ) : (
+                  <p className="text-xs text-slate-500 italic py-2">No care tasks scheduled for today.</p>
+                )}
+              </div>
+            </section>
+
             {/* Today's Care Tasks & Adherence Checklist */}
             <section aria-label="Today's Care Tasks" className="bg-white border border-slate-200 rounded-xl p-5 shadow-sm">
               <div className="flex items-center justify-between pb-3 border-b border-slate-100">
@@ -3589,6 +3953,56 @@ Follow-Up: Outpatient clinic appointment in 10 days with Dr. Jenkins at (555) 23
           </p>
         </div>
       </footer>
+
+      {/* ── Active Floating Reminder Toasts (Requirement 5) ───────────────── */}
+      {activeToasts.length > 0 && (
+        <div className="fixed bottom-5 right-5 z-50 space-y-2.5 max-w-sm w-full pointer-events-none">
+          {activeToasts.map((toast) => (
+            <div
+              key={toast.id}
+              className={`pointer-events-auto p-4 rounded-xl border shadow-2xl backdrop-blur-md transition-all flex items-start space-x-3 ${
+                toast.is_demo
+                  ? 'bg-indigo-950/95 border-indigo-500/50 text-indigo-100'
+                  : toast.is_medication
+                  ? 'bg-amber-950/95 border-amber-500/50 text-amber-100'
+                  : 'bg-slate-900/95 border-teal-500/50 text-slate-100'
+              }`}
+            >
+              <div className={`p-2 rounded-lg shrink-0 mt-0.5 ${
+                toast.is_demo ? 'bg-indigo-600 text-white' : 'bg-teal-600 text-white animate-bounce'
+              }`}>
+                <BellRing className="w-4 h-4" />
+              </div>
+              <div className="flex-1 min-w-0">
+                <div className="flex items-center justify-between">
+                  <span className="text-xs font-bold text-white truncate">{toast.title}</span>
+                  <button
+                    onClick={() => handleDismissToast(toast.id)}
+                    className="text-slate-400 hover:text-white p-0.5 rounded cursor-pointer"
+                    aria-label="Dismiss reminder"
+                  >
+                    <X className="w-3.5 h-3.5" />
+                  </button>
+                </div>
+                <p className="text-xs text-slate-300 mt-1 leading-snug">{toast.message}</p>
+                <div className="mt-2.5 flex items-center justify-between gap-2">
+                  <span className="text-[10px] font-mono text-slate-400 flex items-center space-x-1">
+                    <Clock className="w-3 h-3" />
+                    <span>{toast.scheduled_time}</span>
+                  </span>
+                  <button
+                    type="button"
+                    onClick={() => handleCompleteFromToast(toast.task_id, toast.id)}
+                    className="px-2.5 py-1 text-xs font-semibold rounded bg-teal-500 hover:bg-teal-400 text-white shadow transition cursor-pointer"
+                  >
+                    ✓ {toast.is_medication ? 'Confirm & Record' : 'Mark Done'}
+                  </button>
+                </div>
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
     </div>
     )}
   </div>
